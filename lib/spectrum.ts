@@ -4,12 +4,6 @@ function dashboardHost() {
   return h.replace(/\/+$/, "");
 }
 
-function runtimeHost() {
-  const h = process.env.SPECTRUM_RUNTIME_HOST;
-  if (!h) throw new Error("SPECTRUM_RUNTIME_HOST is not set");
-  return h.replace(/\/+$/, "");
-}
-
 function clientId() {
   const c = process.env.SPECTRUM_CLIENT_ID;
   if (!c) throw new Error("SPECTRUM_CLIENT_ID is not set");
@@ -224,66 +218,42 @@ export async function togglePlatform(
   await expectOk(res, `toggle-platform(${platformId}, ${enabled})`);
 }
 
-function basicAuth(projectId: string, projectSecret: string) {
-  return `Basic ${Buffer.from(`${projectId}:${projectSecret}`).toString("base64")}`;
-}
-
-export interface SharedUserCreateInput {
-  phoneNumber?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-}
-
-export interface SharedUserResult {
+export interface SpectrumLine {
   id: string;
-  type: "shared";
-  phoneNumber: string;
-  redirectUri?: string;
-  email?: string | null;
-  firstName?: string | null;
-  lastName?: string | null;
+  platform?: string;
+  phoneNumber?: string | null;
+  status?: string | null;
 }
 
-export async function createSharedUser(
+interface CreateLineResult {
+  success?: true;
+  line?: SpectrumLine;
+  error?: string;
+}
+
+export async function createImessageLine(
+  bearer: string,
   projectId: string,
-  projectSecret: string,
-  input: SharedUserCreateInput = {},
-): Promise<SharedUserResult> {
-  const res = await fetch(`${runtimeHost()}/users`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: basicAuth(projectId, projectSecret),
+): Promise<{ id: string; phoneNumber: string }> {
+  const res = await fetch(
+    `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/lines`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${bearer}`,
+      },
+      body: JSON.stringify({ platform: "imessage" }),
     },
-    body: JSON.stringify({ type: "shared", ...input }),
-  });
-  const body = await expectOk<SharedUserResult>(res, "create-shared-user");
-  if (!body?.id || !body.phoneNumber) {
-    throw new SpectrumError("create-shared-user returned malformed body", 500, body);
+  );
+  const body = await expectOk<CreateLineResult>(res, "create-line");
+  if (body?.error) throw new SpectrumError(body.error, 500, body);
+  if (!body?.line?.id || !body.line.phoneNumber) {
+    throw new SpectrumError("create-line returned malformed body", 500, body);
   }
-  return body;
+  return { id: body.line.id, phoneNumber: body.line.phoneNumber };
 }
 
-export function userRedirectUrl(userId: string, msg?: string): string {
-  const u = new URL(`${runtimeHost()}/users/${encodeURIComponent(userId)}/redirect`);
-  if (msg) u.searchParams.set("msg", msg);
-  return u.toString();
-}
-
-export interface IssueImessageTokensResult {
-  auth: Record<string, string>;
-  numbers?: Record<string, string>;
-  expiresIn: number;
-}
-
-export async function issueImessageTokens(
-  projectId: string,
-  projectSecret: string,
-): Promise<IssueImessageTokensResult> {
-  const res = await fetch(`${runtimeHost()}/imessage/tokens`, {
-    method: "POST",
-    headers: { authorization: basicAuth(projectId, projectSecret) },
-  });
-  return expectOk<IssueImessageTokensResult>(res, "issue-imessage-tokens");
+export function imessageRedirectUrl(phoneNumber: string): string {
+  return `sms:${phoneNumber}`;
 }

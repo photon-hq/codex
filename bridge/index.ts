@@ -13,8 +13,8 @@ async function main() {
     console.error("MASTER_KEY is not set");
     process.exit(1);
   }
-  if (!process.env.SPECTRUM_API_HOST || !process.env.SPECTRUM_RUNTIME_HOST) {
-    console.error("SPECTRUM_API_HOST and SPECTRUM_RUNTIME_HOST must be set");
+  if (!process.env.SPECTRUM_API_HOST) {
+    console.error("SPECTRUM_API_HOST must be set");
     process.exit(1);
   }
 

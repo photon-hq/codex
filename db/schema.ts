@@ -11,9 +11,8 @@ export const tenants = pgTable("tenants", {
   spectrumProjectSecretIv: text("spectrum_project_secret_iv").notNull(),
   spectrumProjectSecretTag: text("spectrum_project_secret_tag").notNull(),
 
-  spectrumMessagingUserId: text("spectrum_messaging_user_id").notNull(),
+  spectrumLineId: text("spectrum_line_id").notNull(),
   phoneNumber: text("phone_number").notNull(),
-  redirectUri: text("redirect_uri"),
 
   openaiKeyCiphertext: text("openai_key_ciphertext"),
   openaiKeyIv: text("openai_key_iv"),

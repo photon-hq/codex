@@ -1,6 +1,6 @@
 import { getDb } from "@/db/client";
 import { tenants } from "@/db/schema";
-import { getSession } from "@/lib/spectrum";
+import { getSession, imessageRedirectUrl } from "@/lib/spectrum";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
@@ -23,7 +23,6 @@ export async function GET() {
       spectrumEmail: tenants.spectrumEmail,
       spectrumUserName: tenants.spectrumUserName,
       phoneNumber: tenants.phoneNumber,
-      redirectUri: tenants.redirectUri,
       hasOpenAIKey: tenants.openaiKeyCiphertext,
       codexModel: tenants.codexModel,
       status: tenants.status,
@@ -40,6 +39,7 @@ export async function GET() {
     user: session.user,
     tenant: {
       ...row,
+      redirectUri: imessageRedirectUrl(row.phoneNumber),
       hasOpenAIKey: !!row.hasOpenAIKey,
     },
   });

@@ -37,7 +37,6 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/codex
       MASTER_KEY: ${MASTER_KEY}
       SPECTRUM_API_HOST: ${SPECTRUM_API_HOST}
-      SPECTRUM_RUNTIME_HOST: ${SPECTRUM_RUNTIME_HOST}
       SPECTRUM_CLIENT_ID: ${SPECTRUM_CLIENT_ID:-photon-cli}
       CODEX_MODEL: ${CODEX_MODEL:-gpt-5-codex}
     ports:
@@ -53,7 +52,6 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/codex
       MASTER_KEY: ${MASTER_KEY}
       SPECTRUM_API_HOST: ${SPECTRUM_API_HOST}
-      SPECTRUM_RUNTIME_HOST: ${SPECTRUM_RUNTIME_HOST}
       SPECTRUM_CLIENT_ID: ${SPECTRUM_CLIENT_ID:-photon-cli}
       CODEX_MODEL: ${CODEX_MODEL:-gpt-5-codex}
 

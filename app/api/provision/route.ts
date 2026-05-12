@@ -4,12 +4,12 @@ import { encrypt } from "@/lib/crypto";
 import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
+  createImessageLine,
   createProject,
-  createSharedUser,
   getSession,
+  imessageRedirectUrl,
   regenerateProjectSecret,
   togglePlatform,
-  userRedirectUrl,
 } from "@/lib/spectrum";
 import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
         status: "existing",
         tenantId: t.id,
         phoneNumber: t.phoneNumber,
-        redirectUri: t.redirectUri,
+        redirectUri: imessageRedirectUrl(t.phoneNumber),
         hasOpenAIKey: !!t.openaiKeyCiphertext,
       });
     }
@@ -88,15 +88,10 @@ export async function POST(req: Request) {
 
     await togglePlatform(bearer, project.id, "imessage", true);
 
-    const sharedUser = await createSharedUser(project.id, projectSecret, {
-      email: session.user.email ?? undefined,
-      firstName: session.user.name?.split(" ")[0] ?? undefined,
-      lastName: session.user.name?.split(" ").slice(1).join(" ") || undefined,
-    });
+    const line = await createImessageLine(bearer, project.id);
 
     const projectSecretBlob = encrypt(projectSecret);
     const openaiBlob = openaiKey ? encrypt(openaiKey) : null;
-    const redirect = sharedUser.redirectUri ?? userRedirectUrl(sharedUser.id);
 
     const [row] = await db
       .insert(tenants)
@@ -108,9 +103,8 @@ export async function POST(req: Request) {
         spectrumProjectSecretCiphertext: projectSecretBlob.ciphertext,
         spectrumProjectSecretIv: projectSecretBlob.iv,
         spectrumProjectSecretTag: projectSecretBlob.tag,
-        spectrumMessagingUserId: sharedUser.id,
-        phoneNumber: sharedUser.phoneNumber,
-        redirectUri: redirect,
+        spectrumLineId: line.id,
+        phoneNumber: line.phoneNumber,
         openaiKeyCiphertext: openaiBlob?.ciphertext ?? null,
         openaiKeyIv: openaiBlob?.iv ?? null,
         openaiKeyTag: openaiBlob?.tag ?? null,
@@ -122,7 +116,7 @@ export async function POST(req: Request) {
       status: "created",
       tenantId: row.id,
       phoneNumber: row.phoneNumber,
-      redirectUri: row.redirectUri,
+      redirectUri: imessageRedirectUrl(row.phoneNumber),
       hasOpenAIKey: !!openaiBlob,
     });
   } catch (err) {
