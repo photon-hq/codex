@@ -138,14 +138,38 @@ export interface SessionUser {
   [key: string]: unknown;
 }
 
+interface RawSessionEnvelope {
+  user?: Partial<SessionUser> & Record<string, unknown>;
+  session?: { userId?: string; id?: string; [key: string]: unknown };
+  [key: string]: unknown;
+}
+
 export async function getSession(bearer: string): Promise<{ user: SessionUser } | null> {
   const res = await fetch(`${dashboardHost()}/api/auth/get-session`, {
     headers: { authorization: `Bearer ${bearer}` },
   });
   if (res.status === 401) return null;
-  const body = (await expectOk<{ user?: SessionUser }>(res, "get-session")) ?? {};
-  if (!body.user) return null;
-  return { user: body.user };
+  const body = (await expectOk<RawSessionEnvelope>(res, "get-session")) ?? {};
+  const rawUser = body.user;
+  if (!rawUser) return null;
+
+  const id =
+    (typeof rawUser.id === "string" && rawUser.id) ||
+    (typeof body.session?.userId === "string" && body.session.userId) ||
+    (typeof body.session?.id === "string" && body.session.id) ||
+    null;
+
+  if (!id) {
+    console.warn("[spectrum] get-session returned user without id; body:", JSON.stringify(body));
+    return null;
+  }
+
+  return {
+    user: {
+      ...(rawUser as Record<string, unknown>),
+      id,
+    } as SessionUser,
+  };
 }
 
 export interface SpectrumUserResult {
@@ -193,6 +217,23 @@ export async function createSpectrumUser(
   const body = await expectOk<SpectrumUserResult>(res, "create-spectrum-user");
   if (body?.error) throw new SpectrumError(body.error, 500, body);
   return body ?? {};
+}
+
+export async function listSpectrumUsers(
+  bearer: string,
+  projectId: string,
+): Promise<Record<string, unknown> | unknown[] | null> {
+  try {
+    const res = await fetch(
+      `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
+      { headers: { authorization: `Bearer ${bearer}` } },
+    );
+    if (!res.ok) return null;
+    return (await asJson(res)) as Record<string, unknown> | unknown[] | null;
+  } catch (err) {
+    console.warn("[spectrum] list-users probe failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 export interface CreateProjectInput {
@@ -550,6 +591,11 @@ export async function provisionImessage(
 
   const dashboardScan = await findAssignedImessageNumber(bearer, projectId);
   if (dashboardScan) return dashboardScan;
+
+  const sharedFallback = process.env.SPECTRUM_SHARED_IMESSAGE_NUMBER?.trim();
+  if (tokens.type === "shared" && sharedFallback) {
+    return { id: `${projectId}:imessage:shared`, phoneNumber: sharedFallback };
+  }
 
   throw new SpectrumError(
     `iMessage activated but no phone number was returned (type=${tokens.type}). Check the Spectrum dashboard for the assigned number.`,

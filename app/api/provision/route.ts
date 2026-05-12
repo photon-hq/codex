@@ -9,6 +9,7 @@ import {
   getProject,
   getSession,
   imessageRedirectUrl,
+  listSpectrumUsers,
   provisionImessage,
   regenerateProjectSecret,
   togglePlatform,
@@ -77,6 +78,14 @@ export async function POST(req: Request) {
       openaiKey?: unknown;
       userPhone?: unknown;
     };
+    console.log(
+      "[provision] body received: openaiKey=",
+      typeof body.openaiKey === "string"
+        ? `present(len=${body.openaiKey.length})`
+        : typeof body.openaiKey,
+      "userPhone=",
+      typeof body.userPhone === "string" ? `"${body.userPhone}"` : typeof body.userPhone,
+    );
     if (typeof body.userPhone === "string" && body.userPhone.trim().length > 0) {
       userPhone = body.userPhone.trim();
     }
@@ -112,6 +121,17 @@ export async function POST(req: Request) {
 
     const ownerPhone =
       userPhone ?? (typeof session.user.phoneNumber === "string" ? session.user.phoneNumber : null);
+
+    if (!ownerPhone) {
+      return NextResponse.json(
+        {
+          error:
+            "We need your phone number to assign you a Spectrum iMessage bot. Add it and continue.",
+          reason: "phone_required",
+        },
+        { status: 422 },
+      );
+    }
 
     const db = getDb();
 
@@ -150,17 +170,6 @@ export async function POST(req: Request) {
       `[provision] dashboard id=${project.id} cloud spectrumProjectId=${details.spectrumProjectId ?? "(missing — using dashboard id)"}`,
     );
 
-    if (!ownerPhone) {
-      return NextResponse.json(
-        {
-          error:
-            "We need your phone number to assign you a Spectrum iMessage bot. Add it and continue.",
-          reason: "phone_required",
-        },
-        { status: 422 },
-      );
-    }
-
     const fullName = session.user.name?.trim() ?? "";
     const [firstName, ...rest] = fullName.split(/\s+/);
     const userResp = await createSpectrumUser(bearer, project.id, {
@@ -172,27 +181,44 @@ export async function POST(req: Request) {
     });
     console.log("[provision] create-spectrum-user response:", JSON.stringify(userResp));
 
-    let line = await provisionImessage(bearer, cloudProjectId, projectSecret).catch(
-      (err: unknown) => {
-        console.warn(
-          "[provision] provisionImessage fallback after user-add:",
-          err instanceof Error ? err.message : err,
-        );
-        return null;
-      },
-    );
+    let line: { id: string; phoneNumber: string } | null = null;
+
+    const fromUser = pickPhoneFrom(userResp, ownerPhone);
+    if (fromUser) {
+      line = { id: userResp.user?.id ?? `${cloudProjectId}:imessage`, phoneNumber: fromUser };
+      console.log(`[provision] picked bot number from user-add response: ${fromUser}`);
+    }
 
     if (!line) {
-      const fromUser = pickPhoneFrom(userResp, ownerPhone);
-      if (fromUser) {
-        line = { id: userResp.user?.id ?? `${cloudProjectId}:imessage`, phoneNumber: fromUser };
-      } else {
-        throw new SpectrumError(
-          "Couldn't read the assigned iMessage number from Spectrum's response.",
-          500,
-          userResp,
+      try {
+        line = await provisionImessage(bearer, cloudProjectId, projectSecret);
+        console.log(`[provision] picked bot number from provisionImessage: ${line.phoneNumber}`);
+      } catch (err) {
+        console.warn(
+          "[provision] provisionImessage didn't yield a number:",
+          err instanceof Error ? err.message : err,
         );
       }
+    }
+
+    if (!line) {
+      const usersList = await listSpectrumUsers(bearer, project.id);
+      if (usersList) {
+        console.log("[provision] users list response:", JSON.stringify(usersList).slice(0, 1500));
+        const fromList = pickPhoneFrom(usersList, ownerPhone);
+        if (fromList) {
+          line = { id: `${cloudProjectId}:imessage`, phoneNumber: fromList };
+          console.log(`[provision] picked bot number from users list: ${fromList}`);
+        }
+      }
+    }
+
+    if (!line) {
+      throw new SpectrumError(
+        "Couldn't read the assigned iMessage number from Spectrum. Set SPECTRUM_SHARED_IMESSAGE_NUMBER to the shared inbound number, or check the Spectrum dashboard.",
+        500,
+        { userResp },
+      );
     }
 
     const projectSecretBlob = encrypt(projectSecret);

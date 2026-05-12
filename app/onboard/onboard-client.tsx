@@ -141,6 +141,10 @@ export default function OnboardClient() {
 
   useEffect(() => {
     if (stage !== "provision") return;
+    if (!userPhone.trim()) {
+      setStage("phone");
+      return;
+    }
     let cancelled = false;
     setBusy(true);
     void fetch("/api/provision", {
