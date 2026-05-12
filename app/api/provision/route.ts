@@ -9,8 +9,6 @@ import {
   getProject,
   getSession,
   imessageRedirectUrl,
-  listSpectrumUsers,
-  provisionImessage,
   regenerateProjectSecret,
   setSpectrumProfile,
   togglePlatform,
@@ -22,48 +20,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const PHONE_RE = /^\+?\d{6,}$/;
-const PREFERRED_PHONE_KEYS = [
-  "assignedPhoneNumber",
-  "botPhoneNumber",
-  "spectrumPhoneNumber",
-  "inboundPhoneNumber",
-  "sharedPhoneNumber",
-  "lineNumber",
-];
-const FALLBACK_PHONE_KEYS = ["phoneNumber", "phone", "number", "msisdn"];
-
-function pickPhoneFrom(value: unknown, exclude?: string | null, depth = 0): string | null {
-  if (depth > 6 || value === null || value === undefined) return null;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const hit = pickPhoneFrom(item, exclude, depth + 1);
-      if (hit) return hit;
-    }
-    return null;
-  }
-  if (typeof value !== "object") return null;
-  const obj = value as Record<string, unknown>;
-  for (const key of PREFERRED_PHONE_KEYS) {
-    const v = obj[key];
-    if (typeof v === "string" && PHONE_RE.test(v.trim())) {
-      const trimmed = v.trim();
-      if (!exclude || trimmed !== exclude) return trimmed;
-    }
-  }
-  for (const key of FALLBACK_PHONE_KEYS) {
-    const v = obj[key];
-    if (typeof v === "string" && PHONE_RE.test(v.trim())) {
-      const trimmed = v.trim();
-      if (!exclude || trimmed !== exclude) return trimmed;
-    }
-  }
-  for (const v of Object.values(obj)) {
-    const hit = pickPhoneFrom(v, exclude, depth + 1);
-    if (hit) return hit;
-  }
-  return null;
-}
+const PHONE_RE = /^\+[1-9]\d{6,14}$/;
 
 export async function POST(req: Request) {
   const jar = await cookies();
@@ -74,21 +31,24 @@ export async function POST(req: Request) {
 
   let openaiKey: string | null = null;
   let userPhone: string | null = null;
+  let firstName: string | null = null;
+  let lastName: string | null = null;
+
   try {
     const body = (await req.json().catch(() => ({}))) as {
       openaiKey?: unknown;
       userPhone?: unknown;
+      firstName?: unknown;
+      lastName?: unknown;
     };
-    console.log(
-      "[provision] body received: openaiKey=",
-      typeof body.openaiKey === "string"
-        ? `present(len=${body.openaiKey.length})`
-        : typeof body.openaiKey,
-      "userPhone=",
-      typeof body.userPhone === "string" ? `"${body.userPhone}"` : typeof body.userPhone,
-    );
     if (typeof body.userPhone === "string" && body.userPhone.trim().length > 0) {
       userPhone = body.userPhone.trim();
+    }
+    if (typeof body.firstName === "string" && body.firstName.trim().length > 0) {
+      firstName = body.firstName.trim();
+    }
+    if (typeof body.lastName === "string" && body.lastName.trim().length > 0) {
+      lastName = body.lastName.trim();
     }
     if (typeof body.openaiKey === "string" && body.openaiKey.trim().length > 0) {
       const candidate = body.openaiKey.trim();
@@ -113,29 +73,29 @@ export async function POST(req: Request) {
     }
   } catch {}
 
+  if (!userPhone || !PHONE_RE.test(userPhone)) {
+    return NextResponse.json(
+      {
+        error: "Add your phone number in E.164 format, e.g. +14155550123.",
+        reason: "phone_required",
+      },
+      { status: 422 },
+    );
+  }
+  if (!firstName || !lastName) {
+    return NextResponse.json(
+      { error: "First and last name are required.", reason: "name_required" },
+      { status: 422 },
+    );
+  }
+
   try {
     const session = await getSession(bearer);
     if (!session) {
       return NextResponse.json({ error: "session invalid" }, { status: 401 });
     }
-    console.log("[provision] session.user keys:", Object.keys(session.user));
-
-    const ownerPhone =
-      userPhone ?? (typeof session.user.phoneNumber === "string" ? session.user.phoneNumber : null);
-
-    if (!ownerPhone) {
-      return NextResponse.json(
-        {
-          error:
-            "We need your phone number to assign you a Spectrum iMessage bot. Add it and continue.",
-          reason: "phone_required",
-        },
-        { status: 422 },
-      );
-    }
 
     const db = getDb();
-
     const existing = await db
       .select()
       .from(tenants)
@@ -156,99 +116,33 @@ export async function POST(req: Request) {
       ? `codex (${session.user.email})`
       : `codex (${session.user.id.slice(0, 8)})`;
 
-    const project = await createProject(bearer, {
-      name: projectName,
-      spectrum: true,
-    });
-
+    const project = await createProject(bearer, { name: projectName, spectrum: true });
     const { projectSecret } = await regenerateProjectSecret(bearer, project.id);
-
     await togglePlatform(bearer, project.id, "imessage", true);
 
     const details = await getProject(bearer, project.id);
     const cloudProjectId = details.spectrumProjectId ?? project.id;
     console.log(
-      `[provision] dashboard id=${project.id} cloud spectrumProjectId=${details.spectrumProjectId ?? "(missing — using dashboard id)"}`,
+      `[provision] dashboard=${project.id} cloud=${details.spectrumProjectId ?? "(missing)"}`,
     );
 
-    const fullName = session.user.name?.trim() ?? "";
-    const [firstName, ...rest] = fullName.split(/\s+/);
-    const firstNameSafe = firstName || "Codex";
-    const lastNameSafe = rest.join(" ") || "User";
+    await setSpectrumProfile(bearer, project.id, { firstName, lastName });
 
-    const profileResp = await setSpectrumProfile(bearer, project.id, {
-      firstName: firstNameSafe,
-      lastName: lastNameSafe,
+    const ownerEmail = session.user.email ?? `${session.user.id}@codex.local`;
+
+    const userResp = await createSpectrumUser(bearer, project.id, {
+      firstName,
+      lastName,
+      email: ownerEmail,
+      phoneNumber: userPhone,
+      sendInvite: false,
     });
-    if (profileResp) console.log("[provision] set-profile ok");
 
-    let userResp: Awaited<ReturnType<typeof createSpectrumUser>> | null = null;
-    try {
-      userResp = await createSpectrumUser(bearer, project.id, {
-        firstName: firstNameSafe,
-        lastName: lastNameSafe,
-        email: session.user.email ?? `${session.user.id}@codex.local`,
-        phoneNumber: ownerPhone,
-        sendInvite: false,
-      });
-      console.log("[provision] create-spectrum-user response:", JSON.stringify(userResp));
-    } catch (err) {
-      console.warn(
-        "[provision] create-spectrum-user failed (continuing):",
-        err instanceof Error ? err.message : err,
-      );
-    }
+    const assigned = userResp.user?.assignedPhoneNumber?.trim();
+    const spectrumUserRecordId = userResp.user?.id;
 
-    let line: { id: string; phoneNumber: string } | null = null;
-
-    if (userResp) {
-      const fromUser = pickPhoneFrom(userResp, ownerPhone);
-      if (fromUser) {
-        line = { id: userResp.user?.id ?? `${cloudProjectId}:imessage`, phoneNumber: fromUser };
-        console.log(`[provision] picked bot number from user-add response: ${fromUser}`);
-      }
-    }
-
-    if (!line) {
-      try {
-        line = await provisionImessage(bearer, cloudProjectId, projectSecret);
-        console.log(`[provision] picked bot number from provisionImessage: ${line.phoneNumber}`);
-      } catch (err) {
-        console.warn(
-          "[provision] provisionImessage didn't yield a number:",
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }
-
-    if (!line) {
-      const usersList = await listSpectrumUsers(bearer, project.id);
-      if (usersList) {
-        console.log("[provision] users list response:", JSON.stringify(usersList).slice(0, 1500));
-        const fromList = pickPhoneFrom(usersList, ownerPhone);
-        if (fromList) {
-          line = { id: `${cloudProjectId}:imessage`, phoneNumber: fromList };
-          console.log(`[provision] picked bot number from users list: ${fromList}`);
-        }
-      }
-    }
-
-    if (!line) {
-      const sharedFallback = process.env.SPECTRUM_SHARED_IMESSAGE_NUMBER?.trim();
-      if (sharedFallback) {
-        line = { id: `${cloudProjectId}:imessage:shared`, phoneNumber: sharedFallback };
-        console.log(
-          `[provision] using SPECTRUM_SHARED_IMESSAGE_NUMBER fallback: ${sharedFallback}`,
-        );
-      }
-    }
-
-    if (!line) {
-      throw new SpectrumError(
-        "Spectrum didn't return an iMessage number. Set SPECTRUM_SHARED_IMESSAGE_NUMBER to the shared inbound number, or check the Spectrum dashboard.",
-        500,
-        { userResp, profileResp },
-      );
+    if (!assigned || !PHONE_RE.test(assigned)) {
+      throw new SpectrumError("Spectrum didn't return an assigned iMessage number.", 500, userResp);
     }
 
     const projectSecretBlob = encrypt(projectSecret);
@@ -259,13 +153,13 @@ export async function POST(req: Request) {
       .values({
         spectrumUserId: session.user.id,
         spectrumEmail: session.user.email ?? null,
-        spectrumUserName: session.user.name ?? null,
+        spectrumUserName: `${firstName} ${lastName}`.trim(),
         spectrumProjectId: cloudProjectId,
         spectrumProjectSecretCiphertext: projectSecretBlob.ciphertext,
         spectrumProjectSecretIv: projectSecretBlob.iv,
         spectrumProjectSecretTag: projectSecretBlob.tag,
-        spectrumLineId: line.id,
-        phoneNumber: line.phoneNumber,
+        spectrumLineId: spectrumUserRecordId ?? `${cloudProjectId}:imessage`,
+        phoneNumber: assigned,
         openaiKeyCiphertext: openaiBlob?.ciphertext ?? null,
         openaiKeyIv: openaiBlob?.iv ?? null,
         openaiKeyTag: openaiBlob?.tag ?? null,
@@ -282,21 +176,31 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[provision] failed", err);
-    if (err instanceof SpectrumError && err.status === 403) {
-      return NextResponse.json(
-        {
-          error:
-            "Your Spectrum project needs the Business plan to add an iMessage line. Upgrade in the Spectrum dashboard and retry.",
-          reason: "plan_required",
-          billingUrl: `${process.env.SPECTRUM_API_HOST ?? "https://app.photon.codes"}/billing`,
-        },
-        { status: 402 },
-      );
+    if (err instanceof SpectrumError) {
+      if (err.status === 403) {
+        return NextResponse.json(
+          {
+            error:
+              "Your Spectrum project needs the Business plan to add an iMessage line. Upgrade in the Spectrum dashboard and retry.",
+            reason: "plan_required",
+            billingUrl: `${process.env.SPECTRUM_API_HOST ?? "https://app.photon.codes"}/billing`,
+          },
+          { status: 402 },
+        );
+      }
+      if (err.status === 409) {
+        return NextResponse.json(
+          {
+            error:
+              "That phone is already on a Spectrum account. Use a phone you haven't registered with Spectrum (e.g. a Google Voice number).",
+            reason: "phone_conflict",
+          },
+          { status: 409 },
+        );
+      }
     }
+    const message = err instanceof Error ? err.message : "provision failed";
     const status = err instanceof SpectrumError ? err.status : 500;
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "provision failed" },
-      { status },
-    );
+    return NextResponse.json({ error: message }, { status });
   }
 }

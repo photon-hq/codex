@@ -1,4 +1,4 @@
-import { pollDeviceToken } from "@/lib/spectrum";
+import { getSession, pollDeviceToken } from "@/lib/spectrum";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
@@ -36,7 +36,23 @@ export async function POST() {
       maxAge: result.token.expires_in ?? 60 * 60 * 24 * 7,
     });
     jar.delete("device_code");
-    return NextResponse.json({ status: "ok" });
+
+    let user: { firstName: string | null; lastName: string | null; email: string | null } | null =
+      null;
+    try {
+      const session = await getSession(result.token.access_token);
+      if (session?.user) {
+        const fullName = (session.user.name ?? "").trim();
+        const [firstName, ...rest] = fullName.split(/\s+/);
+        user = {
+          firstName: firstName || null,
+          lastName: rest.join(" ") || null,
+          email: session.user.email ?? null,
+        };
+      }
+    } catch {}
+
+    return NextResponse.json({ status: "ok", user });
   }
 
   switch (result.error) {

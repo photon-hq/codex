@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Stage = "key" | "device" | "phone" | "provision" | "done";
+type Stage = "key" | "device" | "details" | "provision" | "done";
 
 interface DeviceState {
   user_code: string;
@@ -31,10 +31,16 @@ interface TenantState {
   redirectUri: string | null;
 }
 
+interface SessionUser {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+}
+
 const STEP_INDEX: Record<Stage, number> = {
   key: 0,
   device: 1,
-  phone: 2,
+  details: 2,
   provision: 2,
   done: 3,
 };
@@ -44,7 +50,10 @@ export default function OnboardClient() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("key");
   const [apiKey, setApiKey] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [userPhone, setUserPhone] = useState("");
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [device, setDevice] = useState<DeviceState | null>(null);
   const [tenant, setTenant] = useState<TenantState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -100,7 +109,13 @@ export default function OnboardClient() {
         if (cancelled) return;
         switch (data.status) {
           case "ok":
-            setStage("phone");
+            if (data.user) {
+              const u = data.user as SessionUser;
+              setSessionUser(u);
+              if (u.firstName) setFirstName(u.firstName);
+              if (u.lastName) setLastName(u.lastName);
+            }
+            setStage("details");
             return;
           case "pending":
             pollTimer = setTimeout(poll, interval);
@@ -141,8 +156,8 @@ export default function OnboardClient() {
 
   useEffect(() => {
     if (stage !== "provision") return;
-    if (!userPhone.trim()) {
-      setStage("phone");
+    if (!userPhone.trim() || !firstName.trim() || !lastName.trim()) {
+      setStage("details");
       return;
     }
     let cancelled = false;
@@ -150,12 +165,23 @@ export default function OnboardClient() {
     void fetch("/api/provision", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ openaiKey: apiKey.trim(), userPhone: userPhone.trim() }),
+      body: JSON.stringify({
+        openaiKey: apiKey.trim(),
+        userPhone: userPhone.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      }),
     })
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
+          const reason = body.reason as string | undefined;
+          if (reason === "phone_conflict") {
+            setStage("details");
+          } else {
+            setStage("key");
+          }
           throw new Error(body.error ?? `provision failed (${res.status})`);
         }
         const data = await res.json();
@@ -171,7 +197,6 @@ export default function OnboardClient() {
         toast.error("Couldn't provision", {
           description: err instanceof Error ? err.message : "provision failed",
         });
-        setStage("key");
       })
       .finally(() => {
         if (!cancelled) setBusy(false);
@@ -179,7 +204,7 @@ export default function OnboardClient() {
     return () => {
       cancelled = true;
     };
-  }, [stage, apiKey, userPhone]);
+  }, [stage, apiKey, userPhone, firstName, lastName]);
 
   const activeIdx = STEP_INDEX[stage];
 
@@ -200,9 +225,14 @@ export default function OnboardClient() {
           beginSpectrum={beginSpectrum}
           device={device}
           tenant={tenant}
+          firstName={firstName}
+          setFirstName={setFirstName}
+          lastName={lastName}
+          setLastName={setLastName}
           userPhone={userPhone}
           setUserPhone={setUserPhone}
-          onPhoneSubmit={() => setStage("provision")}
+          sessionEmail={sessionUser?.email ?? null}
+          onDetailsSubmit={() => setStage("provision")}
         />
       </div>
     </div>
@@ -214,7 +244,7 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "key":
       return <ChatGPTChip />;
     case "device":
-    case "phone":
+    case "details":
       return <SpectrumChip />;
     case "provision":
     case "done":
@@ -253,9 +283,14 @@ interface StageContentProps {
   beginSpectrum: () => void;
   device: DeviceState | null;
   tenant: TenantState | null;
+  firstName: string;
+  setFirstName: (v: string) => void;
+  lastName: string;
+  setLastName: (v: string) => void;
   userPhone: string;
   setUserPhone: (v: string) => void;
-  onPhoneSubmit: () => void;
+  sessionEmail: string | null;
+  onDetailsSubmit: () => void;
 }
 
 function StageContent({
@@ -266,9 +301,14 @@ function StageContent({
   beginSpectrum,
   device,
   tenant,
+  firstName,
+  setFirstName,
+  lastName,
+  setLastName,
   userPhone,
   setUserPhone,
-  onPhoneSubmit,
+  sessionEmail,
+  onDetailsSubmit,
 }: StageContentProps) {
   switch (stage) {
     case "key":
@@ -287,13 +327,18 @@ function StageContent({
         </>
       );
 
-    case "phone":
+    case "details":
       return (
-        <PhoneStage
+        <DetailsStage
+          firstName={firstName}
+          setFirstName={setFirstName}
+          lastName={lastName}
+          setLastName={setLastName}
           userPhone={userPhone}
           setUserPhone={setUserPhone}
+          sessionEmail={sessionEmail}
           busy={busy}
-          onSubmit={onPhoneSubmit}
+          onSubmit={onDetailsSubmit}
         />
       );
 
@@ -326,47 +371,63 @@ function StageContent({
   }
 }
 
-function PhoneStage({
+function DetailsStage({
+  firstName,
+  setFirstName,
+  lastName,
+  setLastName,
   userPhone,
   setUserPhone,
+  sessionEmail,
   busy,
   onSubmit,
 }: {
+  firstName: string;
+  setFirstName: (v: string) => void;
+  lastName: string;
+  setLastName: (v: string) => void;
   userPhone: string;
   setUserPhone: (v: string) => void;
+  sessionEmail: string | null;
   busy: boolean;
   onSubmit: () => void;
 }) {
   const [shaking, setShaking] = useState(false);
   const [attempted, setAttempted] = useState(false);
-  const trimmed = userPhone.trim();
-  const isValid = useMemo(() => /^\+[1-9]\d{6,14}$/.test(trimmed), [trimmed]);
-  const isEmpty = trimmed.length === 0;
-
-  const state: "valid" | "invalid" | "neutral" = isValid
-    ? "valid"
-    : attempted && !isEmpty
-      ? "invalid"
-      : "neutral";
+  const trimmedPhone = userPhone.trim();
+  const phoneOk = useMemo(() => /^\+[1-9]\d{6,14}$/.test(trimmedPhone), [trimmedPhone]);
+  const nameOk = firstName.trim().length > 0 && lastName.trim().length > 0;
+  const isValid = phoneOk && nameOk;
+  const isEmpty = trimmedPhone.length === 0 || !nameOk;
 
   const handleSubmit = () => {
     if (!isValid) {
       setAttempted(true);
       setShaking(true);
       setTimeout(() => setShaking(false), 420);
-      toast.error("That doesn't look like a phone number", {
-        description: "Use E.164 format, e.g. +14155550123.",
-      });
+      if (!nameOk) {
+        toast.error("Add your name", { description: "Both first and last name are required." });
+      } else {
+        toast.error("That doesn't look like a phone number", {
+          description: "Use E.164 format, e.g. +14155550123.",
+        });
+      }
       return;
     }
     onSubmit();
   };
 
+  const phoneState: "valid" | "invalid" | "neutral" = phoneOk
+    ? "valid"
+    : attempted && trimmedPhone.length > 0
+      ? "invalid"
+      : "neutral";
+
   return (
     <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Your phone number</h1>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Your details</h1>
       <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-        Spectrum uses this to assign you a shared iMessage bot you can text.
+        Spectrum needs this to assign you a shared iMessage number you can text.
       </p>
       <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
         <form
@@ -377,6 +438,38 @@ function PhoneStage({
           }}
           noValidate
         >
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              className="input-glass text-[15px]"
+              type="text"
+              placeholder="First name"
+              autoComplete="given-name"
+              spellCheck={false}
+              value={firstName}
+              onChange={(e) => {
+                setFirstName(e.target.value);
+                if (attempted) setAttempted(false);
+              }}
+              disabled={busy}
+              aria-label="First name"
+              required
+            />
+            <input
+              className="input-glass text-[15px]"
+              type="text"
+              placeholder="Last name"
+              autoComplete="family-name"
+              spellCheck={false}
+              value={lastName}
+              onChange={(e) => {
+                setLastName(e.target.value);
+                if (attempted) setAttempted(false);
+              }}
+              disabled={busy}
+              aria-label="Last name"
+              required
+            />
+          </div>
           <div className="relative">
             <input
               className="input-glass font-mono text-center text-[15px] tracking-[0.02em] pr-10"
@@ -391,15 +484,15 @@ function PhoneStage({
                 if (attempted) setAttempted(false);
               }}
               disabled={busy}
-              aria-label="Your phone number (E.164)"
-              aria-invalid={state === "invalid" || undefined}
-              data-state={state === "neutral" ? undefined : state}
+              aria-label="Phone number (E.164)"
+              aria-invalid={phoneState === "invalid" || undefined}
+              data-state={phoneState === "neutral" ? undefined : phoneState}
               required
             />
             <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-              {state === "valid" ? (
+              {phoneState === "valid" ? (
                 <Check size={16} className="text-[var(--color-success)]" />
-              ) : state === "invalid" ? (
+              ) : phoneState === "invalid" ? (
                 <AlertCircle size={16} className="text-[var(--color-danger)]" />
               ) : null}
             </span>
@@ -414,8 +507,8 @@ function PhoneStage({
             {!busy && <ArrowRight size={14} className="ml-1.5" />}
           </button>
           <p className="mt-1 text-[12px] text-[var(--color-text-dim)]">
-            Include the country code. We never message you — Spectrum uses this to register your
-            account.
+            Use a phone that isn&rsquo;t already on your Spectrum account.
+            {sessionEmail ? <> Email on file: {sessionEmail}.</> : null}
           </p>
         </form>
       </div>

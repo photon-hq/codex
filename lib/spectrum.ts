@@ -179,6 +179,8 @@ export interface SpectrumUserResult {
     lastName?: string | null;
     email?: string | null;
     phoneNumber?: string | null;
+    assignedPhoneNumber?: string | null;
+    type?: string | null;
     [key: string]: unknown;
   };
   success?: boolean;
@@ -204,7 +206,6 @@ export async function createSpectrumUser(
     phoneNumber: input.phoneNumber,
     sendInvite: input.sendInvite ?? false,
   };
-  console.log("[spectrum] create-user request:", JSON.stringify(payload));
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
     {
@@ -218,9 +219,6 @@ export async function createSpectrumUser(
   );
   if (!res.ok) {
     const raw = (await asJson(res)) as unknown;
-    console.warn(
-      `[spectrum] create-user ${res.status} ${res.statusText} body=${JSON.stringify(raw)}`,
-    );
     throw new SpectrumError(
       `create-spectrum-user failed: ${res.status} ${res.statusText}`,
       res.status,
@@ -228,7 +226,12 @@ export async function createSpectrumUser(
     );
   }
   const body = (await asJson(res)) as SpectrumUserResult | null;
-  if (body?.error) throw new SpectrumError(body.error, 500, body);
+  if (body?.error) {
+    if (/failed to create user/i.test(body.error)) {
+      throw new SpectrumError(body.error, 409, body);
+    }
+    throw new SpectrumError(body.error, 500, body);
+  }
   return body ?? {};
 }
 
@@ -261,23 +264,6 @@ export async function setSpectrumProfile(
     return (await asJson(res)) as Record<string, unknown> | null;
   } catch (err) {
     console.warn("[spectrum] set-profile failed:", err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
-export async function listSpectrumUsers(
-  bearer: string,
-  projectId: string,
-): Promise<Record<string, unknown> | unknown[] | null> {
-  try {
-    const res = await fetch(
-      `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
-      { headers: { authorization: `Bearer ${bearer}` } },
-    );
-    if (!res.ok) return null;
-    return (await asJson(res)) as Record<string, unknown> | unknown[] | null;
-  } catch (err) {
-    console.warn("[spectrum] list-users probe failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -379,133 +365,6 @@ export async function togglePlatform(
   await expectOk(res, `toggle-platform(${platformId}, ${enabled})`);
 }
 
-export interface SpectrumLine {
-  id: string;
-  platform?: string;
-  phoneNumber?: string | null;
-  status?: string | null;
-}
-
-interface CreateLineResult {
-  success?: true;
-  line?: SpectrumLine;
-  error?: string;
-}
-
-export async function listLines(bearer: string, projectId: string): Promise<SpectrumLine[]> {
-  const res = await fetch(
-    `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/lines`,
-    {
-      headers: { authorization: `Bearer ${bearer}` },
-    },
-  );
-  const body = await expectOk<SpectrumLine[] | { data?: SpectrumLine[] }>(res, "list-lines");
-  if (Array.isArray(body)) return body;
-  if (body && typeof body === "object" && Array.isArray(body.data)) return body.data;
-  return [];
-}
-
-export async function createImessageLine(
-  bearer: string,
-  projectId: string,
-): Promise<{ id: string; phoneNumber: string }> {
-  const res = await fetch(
-    `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/lines`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${bearer}`,
-      },
-      body: JSON.stringify({ platform: "imessage" }),
-    },
-  );
-  const body = await expectOk<CreateLineResult>(res, "create-line");
-  if (body?.error) throw new SpectrumError(body.error, 500, body);
-  if (!body?.line?.id || !body.line.phoneNumber) {
-    throw new SpectrumError("create-line returned malformed body", 500, body);
-  }
-  return { id: body.line.id, phoneNumber: body.line.phoneNumber };
-}
-
-async function fetchJsonWithBearer(bearer: string, path: string): Promise<unknown> {
-  const res = await fetch(`${dashboardHost()}${path}`, {
-    headers: { authorization: `Bearer ${bearer}` },
-  });
-  if (!res.ok) {
-    throw new SpectrumError(
-      `${path} failed: ${res.status} ${res.statusText}`,
-      res.status,
-      await asJson(res),
-    );
-  }
-  return asJson(res);
-}
-
-function pickPhoneNumber(value: unknown): string | null {
-  if (!value || typeof value !== "object") return null;
-  const keys = ["phoneNumber", "phone_number", "phone", "msisdn", "number"];
-  for (const k of keys) {
-    const v = (value as Record<string, unknown>)[k];
-    if (typeof v === "string" && /^\+?\d{6,}$/.test(v.trim())) return v.trim();
-  }
-  return null;
-}
-
-function deepFindImessagePhone(
-  value: unknown,
-  depth = 0,
-): { id?: string; phoneNumber: string } | null {
-  if (depth > 6 || !value) return null;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const hit = deepFindImessagePhone(item, depth + 1);
-      if (hit) return hit;
-    }
-    return null;
-  }
-  if (typeof value !== "object") return null;
-  const obj = value as Record<string, unknown>;
-  const platform = typeof obj.platform === "string" ? obj.platform.toLowerCase() : null;
-  const phone = pickPhoneNumber(obj);
-  if (phone && (platform === null || platform === "imessage" || platform === "ios")) {
-    const id = typeof obj.id === "string" ? obj.id : undefined;
-    return { id, phoneNumber: phone };
-  }
-  for (const v of Object.values(obj)) {
-    const hit = deepFindImessagePhone(v, depth + 1);
-    if (hit) return hit;
-  }
-  return null;
-}
-
-export async function findAssignedImessageNumber(
-  bearer: string,
-  projectId: string,
-): Promise<{ id: string; phoneNumber: string } | null> {
-  const probes: Array<{ path: string; label: string }> = [
-    { path: `/api/projects/${encodeURIComponent(projectId)}/lines`, label: "lines" },
-    { path: `/api/projects/${encodeURIComponent(projectId)}/platforms`, label: "platforms" },
-    { path: `/api/projects/${encodeURIComponent(projectId)}`, label: "project" },
-    {
-      path: `/api/projects/${encodeURIComponent(projectId)}/spectrum/profile`,
-      label: "spectrum-profile",
-    },
-  ];
-  for (const { path, label } of probes) {
-    try {
-      const body = await fetchJsonWithBearer(bearer, path);
-      const hit = deepFindImessagePhone(body);
-      if (hit?.phoneNumber) {
-        return { id: hit.id ?? `${label}:assigned`, phoneNumber: hit.phoneNumber };
-      }
-    } catch (err) {
-      console.warn(`[spectrum] probe ${label} failed:`, err instanceof Error ? err.message : err);
-    }
-  }
-  return null;
-}
-
 export interface ImessageTokensResponse {
   type: "shared" | "dedicated";
   token?: string;
@@ -596,57 +455,6 @@ export async function cloudTogglePlatform(
       body: JSON.stringify({ platform, enabled }),
     },
     "cloud-toggle-platform",
-  );
-}
-
-export async function provisionImessage(
-  bearer: string,
-  projectId: string,
-  projectSecret: string,
-): Promise<{ id: string; phoneNumber: string }> {
-  await cloudTogglePlatform(projectId, projectSecret, "imessage", true);
-
-  const tokens = await issueImessageTokens(projectId, projectSecret);
-  console.log("[spectrum] imessage tokens response keys:", Object.keys(tokens));
-
-  if (tokens.type === "dedicated" && tokens.numbers) {
-    const entries = Object.entries(tokens.numbers);
-    if (entries.length > 0) {
-      const [instanceId, phoneNumber] = entries[0];
-      if (typeof phoneNumber === "string" && phoneNumber.length > 0) {
-        return { id: instanceId, phoneNumber };
-      }
-    }
-  }
-
-  const scanned = deepFindImessagePhone(tokens);
-  if (scanned?.phoneNumber) {
-    return { id: scanned.id ?? `${projectId}:imessage`, phoneNumber: scanned.phoneNumber };
-  }
-
-  try {
-    const info = await getImessageInfo(projectId, projectSecret);
-    console.log("[spectrum] imessage info response:", info);
-    const infoPhone = deepFindImessagePhone(info);
-    if (infoPhone?.phoneNumber) {
-      return { id: infoPhone.id ?? `${projectId}:imessage`, phoneNumber: infoPhone.phoneNumber };
-    }
-  } catch (err) {
-    console.warn("[spectrum] get-imessage-info failed:", err instanceof Error ? err.message : err);
-  }
-
-  const dashboardScan = await findAssignedImessageNumber(bearer, projectId);
-  if (dashboardScan) return dashboardScan;
-
-  const sharedFallback = process.env.SPECTRUM_SHARED_IMESSAGE_NUMBER?.trim();
-  if (tokens.type === "shared" && sharedFallback) {
-    return { id: `${projectId}:imessage:shared`, phoneNumber: sharedFallback };
-  }
-
-  throw new SpectrumError(
-    `iMessage activated but no phone number was returned (type=${tokens.type}). Check the Spectrum dashboard for the assigned number.`,
-    500,
-    tokens,
   );
 }
 
