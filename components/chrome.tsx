@@ -1,0 +1,179 @@
+import { ArrowLeft } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
+import type { ReactNode } from "react";
+
+const CODEX_BG_VIDEO = "https://persistent.oaistatic.com/codex/background-video-jan-28.mp4";
+const CODEX_ICON_VIDEO = "https://persistent.oaistatic.com/codex/icon-gif.mp4";
+const CODEX_ICON_POSTER = "https://persistent.oaistatic.com/codex/icon.png";
+
+export function PageShell({
+  children,
+  contentClassName,
+}: {
+  children: ReactNode;
+  contentClassName?: string;
+}) {
+  return (
+    <main className="relative flex flex-1 flex-col">
+      <div
+        className={`flex w-full flex-1 flex-col items-center px-5 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10 ${contentClassName ?? ""}`}
+      >
+        {children}
+      </div>
+    </main>
+  );
+}
+
+export function BackdropVideo() {
+  return (
+    <video
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+      aria-hidden
+      className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
+    >
+      <source src={CODEX_BG_VIDEO} type="video/mp4" />
+    </video>
+  );
+}
+
+export function TopNav({ left, right }: { left?: ReactNode; right?: ReactNode }) {
+  return (
+    <header className="fade-up relative z-10 flex w-full items-center justify-between px-5 py-4 sm:px-8 sm:py-5 md:px-10 lg:px-12">
+      {left ?? <BrandLink />}
+      {right ?? <GitHubPill />}
+    </header>
+  );
+}
+
+export function BrandLink() {
+  return (
+    <Link href="/" className="flex items-center gap-2 text-[var(--color-text)]">
+      <ChatGPTMark className="h-6 w-6 sm:h-7 sm:w-7" />
+      <span className="text-[15px] font-medium tracking-[-0.01em]">ChatGPT</span>
+    </Link>
+  );
+}
+
+export function BackHomePill() {
+  return (
+    <Link
+      href="/"
+      className="btn-pill-secondary nav-link inline-flex items-center gap-1.5"
+      style={{ padding: "0.4375rem 0.875rem 0.4375rem 0.75rem", fontSize: "13px" }}
+    >
+      <ArrowLeft size={13} className="-ml-0.5" />
+      Home
+    </Link>
+  );
+}
+
+export function GitHubPill() {
+  return (
+    <a
+      href="https://github.com/photon-hq/codex"
+      target="_blank"
+      rel="noreferrer"
+      className="btn-pill-secondary nav-link inline-flex items-center"
+      style={{ padding: "0.4375rem 0.875rem", fontSize: "13px" }}
+    >
+      GitHub
+    </a>
+  );
+}
+
+export function CodexIcon({
+  size = "clamp(72px, 8.5vw, 96px)",
+  radius = "22px",
+}: {
+  size?: string;
+  radius?: string;
+}) {
+  return (
+    <div
+      className="overflow-hidden shadow-[0_18px_48px_-22px_rgba(40,30,90,0.35)]"
+      style={{ width: size, height: size, borderRadius: radius }}
+    >
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="auto"
+        poster={CODEX_ICON_POSTER}
+        aria-label="Codex"
+        className="h-full w-full object-cover"
+      >
+        <source src={CODEX_ICON_VIDEO} type="video/mp4" />
+      </video>
+    </div>
+  );
+}
+
+export function ChatGPTChip({
+  size = "clamp(56px, 6.5vw, 68px)",
+  radius = "18px",
+}: {
+  size?: string;
+  radius?: string;
+}) {
+  return (
+    <div
+      className="flex items-center justify-center bg-white shadow-[0_18px_48px_-22px_rgba(40,30,90,0.35)]"
+      style={{ width: size, height: size, borderRadius: radius }}
+      aria-label="ChatGPT"
+    >
+      <ChatGPTMark className="h-[58%] w-[58%] text-[#0d0d0d]" />
+    </div>
+  );
+}
+
+export function SpectrumChip({
+  size = "clamp(56px, 6.5vw, 68px)",
+  radius = "18px",
+}: {
+  size?: string;
+  radius?: string;
+}) {
+  return (
+    <div
+      className="relative overflow-hidden shadow-[0_18px_48px_-22px_rgba(40,30,90,0.35)]"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        background: "radial-gradient(120% 100% at 30% 20%, #2a2655 0%, #1a1638 55%, #0f0c26 100%)",
+      }}
+      aria-label="Spectrum"
+    >
+      <Image
+        src="/spectrum-mark.png"
+        alt=""
+        width={180}
+        height={180}
+        priority
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+    </div>
+  );
+}
+
+export function ChatGPTMark({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="currentColor"
+      className={className}
+      role="img"
+      aria-labelledby="chatgpt-mark-title"
+    >
+      <title id="chatgpt-mark-title">ChatGPT</title>
+      <path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9 6.0651 6.0651 0 0 0-4.0935-1.91A6.0421 6.0421 0 0 0 5.0488 4.18a5.9844 5.9844 0 0 0-3.997 2.9001 6.0563 6.0563 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.6765zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" />
+    </svg>
+  );
+}

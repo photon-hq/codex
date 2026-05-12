@@ -1,0 +1,59 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# next
+.next/
+out/
+
+# production
+build/
+dist/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env
+.env
+.env.local
+.env*.local
+
+# typescript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+next-env.d.ts
+
+# bun — lockfile IS committed for reproducible `bun install --frozen-lockfile`
+# in Docker builds. Only the legacy binary lockfile is ignored.
+bun.lockb
+
+# IDE
+.vscode/
+.idea/
+
+# local test/screenshot artifacts (Playwright MCP, ad-hoc captures)
+.playwright-mcp/
+*-stage.png
+test-results/
+playwright-report/
+
+# drizzle
+drizzle/migrations.json
+
+# deploy state (per-platform, never committed)
+.railway/
+railway.json
+railway.toml
+.vercel/
+.fly/
+fly.toml
+deploy/
+.deploy-state

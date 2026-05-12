@@ -1,0 +1,21 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    uses: photon-hq/buildspace/.github/workflows/typescript-service-release.yaml@main
+    permissions:
+      contents: write
+      pull-requests: read
+    with:
+      service-name: codex
+      bun-version: "1.3"
+      build-command: "bun run build"
+      no-npm-publish: true
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      APP_ID: ${{ secrets.APP_ID }}
+      APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}

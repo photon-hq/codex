@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: codex
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  db-push:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PROCESS: db-push
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/codex
+    restart: "no"
+
+  webapp:
+    build: .
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    environment:
+      PROCESS: webapp
+      PORT: 3000
+      PUBLIC_URL: http://localhost:3000
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/codex
+      MASTER_KEY: ${MASTER_KEY}
+      SPECTRUM_API_HOST: ${SPECTRUM_API_HOST}
+      SPECTRUM_RUNTIME_HOST: ${SPECTRUM_RUNTIME_HOST}
+      SPECTRUM_CLIENT_ID: ${SPECTRUM_CLIENT_ID:-photon-cli}
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5-codex}
+    ports:
+      - "3000:3000"
+
+  bridge:
+    build: .
+    depends_on:
+      db-push:
+        condition: service_completed_successfully
+    environment:
+      PROCESS: bridge
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/codex
+      MASTER_KEY: ${MASTER_KEY}
+      SPECTRUM_API_HOST: ${SPECTRUM_API_HOST}
+      SPECTRUM_RUNTIME_HOST: ${SPECTRUM_RUNTIME_HOST}
+      SPECTRUM_CLIENT_ID: ${SPECTRUM_CLIENT_ID:-photon-cli}
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5-codex}
+
+volumes:
+  postgres_data:
