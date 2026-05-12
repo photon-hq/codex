@@ -12,7 +12,7 @@ function run(cmd: string, args: string[]) {
 
 switch (role) {
   case "webapp":
-    run("node", ["server.js"]);
+    run("bunx", ["next", "start", "-p", process.env.PORT ?? "3000"]);
     break;
   case "bridge":
     run("bun", ["bridge/index.ts"]);

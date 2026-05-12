@@ -1,10 +1,14 @@
 ARG BUN_VERSION=1.3
-ARG NODE_VERSION=22
 
 FROM oven/bun:${BUN_VERSION}-alpine AS deps
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile
+
+FROM oven/bun:${BUN_VERSION}-alpine AS prod-deps
+WORKDIR /app
+COPY package.json bun.lock* ./
+RUN bun install --frozen-lockfile --production
 
 FROM oven/bun:${BUN_VERSION}-alpine AS builder
 WORKDIR /app
@@ -20,22 +24,20 @@ ENV NODE_ENV=production \
     PORT=3000 \
     PROCESS=webapp
 
-RUN apk add --no-cache nodejs ca-certificates tini \
+RUN apk add --no-cache tini ca-certificates \
  && addgroup -S app && adduser -S -G app app
 
-COPY --from=builder --chown=app:app /app/.next/standalone ./
-COPY --from=builder --chown=app:app /app/.next/static ./.next/static
+COPY --from=prod-deps --chown=app:app /app/node_modules ./node_modules
+COPY --from=builder --chown=app:app /app/.next ./.next
 COPY --from=builder --chown=app:app /app/public ./public
-
 COPY --from=builder --chown=app:app /app/bridge ./bridge
 COPY --from=builder --chown=app:app /app/lib ./lib
 COPY --from=builder --chown=app:app /app/db ./db
 COPY --from=builder --chown=app:app /app/scripts ./scripts
-COPY --from=builder --chown=app:app /app/node_modules ./bridge-node_modules
-COPY --from=builder --chown=app:app /app/tsconfig.json ./tsconfig.json
-COPY --from=builder --chown=app:app /app/package.json ./package.json
-
-RUN ln -s /app/bridge-node_modules /app/node_modules || true
+COPY --from=builder --chown=app:app /app/next.config.ts ./
+COPY --from=builder --chown=app:app /app/drizzle.config.ts ./
+COPY --from=builder --chown=app:app /app/tsconfig.json ./
+COPY --chown=app:app package.json ./
 
 USER app
 EXPOSE 3000
