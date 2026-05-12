@@ -5,6 +5,7 @@ import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
   createProject,
+  getProject,
   getSession,
   imessageRedirectUrl,
   provisionImessage,
@@ -88,7 +89,13 @@ export async function POST(req: Request) {
 
     await togglePlatform(bearer, project.id, "imessage", true);
 
-    const line = await provisionImessage(bearer, project.id, projectSecret);
+    const details = await getProject(bearer, project.id);
+    const cloudProjectId = details.spectrumProjectId ?? project.id;
+    console.log(
+      `[provision] dashboard id=${project.id} cloud spectrumProjectId=${details.spectrumProjectId ?? "(missing — using dashboard id)"}`,
+    );
+
+    const line = await provisionImessage(bearer, cloudProjectId, projectSecret);
 
     const projectSecretBlob = encrypt(projectSecret);
     const openaiBlob = openaiKey ? encrypt(openaiKey) : null;
@@ -99,7 +106,7 @@ export async function POST(req: Request) {
         spectrumUserId: session.user.id,
         spectrumEmail: session.user.email ?? null,
         spectrumUserName: session.user.name ?? null,
-        spectrumProjectId: project.id,
+        spectrumProjectId: cloudProjectId,
         spectrumProjectSecretCiphertext: projectSecretBlob.ciphertext,
         spectrumProjectSecretIv: projectSecretBlob.iv,
         spectrumProjectSecretTag: projectSecretBlob.tag,

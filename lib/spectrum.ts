@@ -157,6 +157,7 @@ export interface CreateProjectInput {
 export interface CreateProjectResult {
   success?: true;
   id?: string;
+  spectrumProjectId?: string;
   error?: string;
 }
 
@@ -181,6 +182,21 @@ export async function createProject(
   const body = await expectOk<CreateProjectResult>(res, "create-project");
   if (!body?.id) throw new SpectrumError("create-project returned no id", 500, body);
   return { id: body.id };
+}
+
+export interface ProjectDetails {
+  id: string;
+  name?: string;
+  spectrum?: boolean;
+  spectrumProjectId?: string | null;
+  [key: string]: unknown;
+}
+
+export async function getProject(bearer: string, projectId: string): Promise<ProjectDetails> {
+  const res = await fetch(`${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}`, {
+    headers: { authorization: `Bearer ${bearer}` },
+  });
+  return expectOk<ProjectDetails>(res, "get-project");
 }
 
 export interface RegenerateSecretResult {
