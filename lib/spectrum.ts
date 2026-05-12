@@ -4,6 +4,15 @@ function dashboardHost() {
   return h.replace(/\/+$/, "");
 }
 
+function runtimeHost() {
+  const h = process.env.SPECTRUM_RUNTIME_HOST ?? "https://spectrum.photon.codes";
+  return h.replace(/\/+$/, "");
+}
+
+function basicAuth(projectId: string, projectSecret: string): string {
+  return `Basic ${Buffer.from(`${projectId}:${projectSecret}`).toString("base64")}`;
+}
+
 function clientId() {
   const c = process.env.SPECTRUM_CLIENT_ID;
   if (!c) throw new Error("SPECTRUM_CLIENT_ID is not set");
@@ -345,13 +354,143 @@ export async function findAssignedImessageNumber(
   return null;
 }
 
-export async function ensureImessageLine(
+export interface ImessageTokensResponse {
+  type: "shared" | "dedicated";
+  token?: string;
+  auth?: Record<string, string>;
+  numbers?: Record<string, string>;
+  expiresIn?: number;
+  [key: string]: unknown;
+}
+
+interface CloudEnvelope<T> {
+  succeed?: boolean;
+  data?: T;
+  code?: string;
+  message?: string;
+}
+
+async function cloudCall<T = unknown>(
+  path: string,
+  init: RequestInit,
+  context: string,
+): Promise<T> {
+  const res = await fetch(`${runtimeHost()}${path}`, init);
+  const body = (await asJson(res)) as CloudEnvelope<T> | T | null;
+  if (!res.ok) {
+    const envelope = body && typeof body === "object" ? (body as CloudEnvelope<T>) : null;
+    const hint = envelope?.message ?? envelope?.code ?? "";
+    throw new SpectrumError(
+      `${context} failed: ${res.status} ${res.statusText}${hint ? ` — ${hint}` : ""}`,
+      res.status,
+      body,
+    );
+  }
+  if (body && typeof body === "object" && "succeed" in body) {
+    const envelope = body as CloudEnvelope<T>;
+    if (envelope.succeed === false) {
+      throw new SpectrumError(
+        `${context} failed: ${envelope.message ?? "succeed=false"}`,
+        500,
+        envelope,
+      );
+    }
+    if (envelope.data !== undefined) return envelope.data;
+  }
+  return body as T;
+}
+
+export async function issueImessageTokens(
+  projectId: string,
+  projectSecret: string,
+): Promise<ImessageTokensResponse> {
+  return cloudCall<ImessageTokensResponse>(
+    `/projects/${encodeURIComponent(projectId)}/imessage/tokens`,
+    {
+      method: "POST",
+      headers: { authorization: basicAuth(projectId, projectSecret) },
+    },
+    "issue-imessage-tokens",
+  );
+}
+
+export async function getImessageInfo(
+  projectId: string,
+  projectSecret: string,
+): Promise<Record<string, unknown>> {
+  return cloudCall<Record<string, unknown>>(
+    `/projects/${encodeURIComponent(projectId)}/imessage/`,
+    {
+      headers: { authorization: basicAuth(projectId, projectSecret) },
+    },
+    "get-imessage-info",
+  );
+}
+
+export async function cloudTogglePlatform(
+  projectId: string,
+  projectSecret: string,
+  platform: "imessage" | "whatsapp_business",
+  enabled: boolean,
+): Promise<void> {
+  await cloudCall<Record<string, unknown>>(
+    `/projects/${encodeURIComponent(projectId)}/platforms/`,
+    {
+      method: "PATCH",
+      headers: {
+        authorization: basicAuth(projectId, projectSecret),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ platform, enabled }),
+    },
+    "cloud-toggle-platform",
+  );
+}
+
+export async function provisionImessage(
   bearer: string,
   projectId: string,
+  projectSecret: string,
 ): Promise<{ id: string; phoneNumber: string }> {
-  const assigned = await findAssignedImessageNumber(bearer, projectId);
-  if (assigned) return assigned;
-  return createImessageLine(bearer, projectId);
+  await cloudTogglePlatform(projectId, projectSecret, "imessage", true);
+
+  const tokens = await issueImessageTokens(projectId, projectSecret);
+  console.log("[spectrum] imessage tokens response keys:", Object.keys(tokens));
+
+  if (tokens.type === "dedicated" && tokens.numbers) {
+    const entries = Object.entries(tokens.numbers);
+    if (entries.length > 0) {
+      const [instanceId, phoneNumber] = entries[0];
+      if (typeof phoneNumber === "string" && phoneNumber.length > 0) {
+        return { id: instanceId, phoneNumber };
+      }
+    }
+  }
+
+  const scanned = deepFindImessagePhone(tokens);
+  if (scanned?.phoneNumber) {
+    return { id: scanned.id ?? `${projectId}:imessage`, phoneNumber: scanned.phoneNumber };
+  }
+
+  try {
+    const info = await getImessageInfo(projectId, projectSecret);
+    console.log("[spectrum] imessage info response:", info);
+    const infoPhone = deepFindImessagePhone(info);
+    if (infoPhone?.phoneNumber) {
+      return { id: infoPhone.id ?? `${projectId}:imessage`, phoneNumber: infoPhone.phoneNumber };
+    }
+  } catch (err) {
+    console.warn("[spectrum] get-imessage-info failed:", err instanceof Error ? err.message : err);
+  }
+
+  const dashboardScan = await findAssignedImessageNumber(bearer, projectId);
+  if (dashboardScan) return dashboardScan;
+
+  throw new SpectrumError(
+    `iMessage activated but no phone number was returned (type=${tokens.type}). Check the Spectrum dashboard for the assigned number.`,
+    500,
+    tokens,
+  );
 }
 
 export function imessageRedirectUrl(phoneNumber: string): string {

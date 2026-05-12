@@ -5,9 +5,9 @@ import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
   createProject,
-  ensureImessageLine,
   getSession,
   imessageRedirectUrl,
+  provisionImessage,
   regenerateProjectSecret,
   togglePlatform,
 } from "@/lib/spectrum";
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
 
     await togglePlatform(bearer, project.id, "imessage", true);
 
-    const line = await ensureImessageLine(bearer, project.id);
+    const line = await provisionImessage(bearer, project.id, projectSecret);
 
     const projectSecretBlob = encrypt(projectSecret);
     const openaiBlob = openaiKey ? encrypt(openaiKey) : null;
