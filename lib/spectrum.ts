@@ -267,18 +267,90 @@ export async function createImessageLine(
   return { id: body.line.id, phoneNumber: body.line.phoneNumber };
 }
 
+async function fetchJsonWithBearer(bearer: string, path: string): Promise<unknown> {
+  const res = await fetch(`${dashboardHost()}${path}`, {
+    headers: { authorization: `Bearer ${bearer}` },
+  });
+  if (!res.ok) {
+    throw new SpectrumError(
+      `${path} failed: ${res.status} ${res.statusText}`,
+      res.status,
+      await asJson(res),
+    );
+  }
+  return asJson(res);
+}
+
+function pickPhoneNumber(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const keys = ["phoneNumber", "phone_number", "phone", "msisdn", "number"];
+  for (const k of keys) {
+    const v = (value as Record<string, unknown>)[k];
+    if (typeof v === "string" && /^\+?\d{6,}$/.test(v.trim())) return v.trim();
+  }
+  return null;
+}
+
+function deepFindImessagePhone(
+  value: unknown,
+  depth = 0,
+): { id?: string; phoneNumber: string } | null {
+  if (depth > 6 || !value) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const hit = deepFindImessagePhone(item, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  if (typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const platform = typeof obj.platform === "string" ? obj.platform.toLowerCase() : null;
+  const phone = pickPhoneNumber(obj);
+  if (phone && (platform === null || platform === "imessage" || platform === "ios")) {
+    const id = typeof obj.id === "string" ? obj.id : undefined;
+    return { id, phoneNumber: phone };
+  }
+  for (const v of Object.values(obj)) {
+    const hit = deepFindImessagePhone(v, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+export async function findAssignedImessageNumber(
+  bearer: string,
+  projectId: string,
+): Promise<{ id: string; phoneNumber: string } | null> {
+  const probes: Array<{ path: string; label: string }> = [
+    { path: `/api/projects/${encodeURIComponent(projectId)}/lines`, label: "lines" },
+    { path: `/api/projects/${encodeURIComponent(projectId)}/platforms`, label: "platforms" },
+    { path: `/api/projects/${encodeURIComponent(projectId)}`, label: "project" },
+    {
+      path: `/api/projects/${encodeURIComponent(projectId)}/spectrum/profile`,
+      label: "spectrum-profile",
+    },
+  ];
+  for (const { path, label } of probes) {
+    try {
+      const body = await fetchJsonWithBearer(bearer, path);
+      const hit = deepFindImessagePhone(body);
+      if (hit?.phoneNumber) {
+        return { id: hit.id ?? `${label}:assigned`, phoneNumber: hit.phoneNumber };
+      }
+    } catch (err) {
+      console.warn(`[spectrum] probe ${label} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return null;
+}
+
 export async function ensureImessageLine(
   bearer: string,
   projectId: string,
 ): Promise<{ id: string; phoneNumber: string }> {
-  const existing = await listLines(bearer, projectId);
-  const imessage = existing.find(
-    (l) =>
-      l.platform === "imessage" && typeof l.phoneNumber === "string" && l.phoneNumber.length > 0,
-  );
-  if (imessage?.phoneNumber) {
-    return { id: imessage.id, phoneNumber: imessage.phoneNumber };
-  }
+  const assigned = await findAssignedImessageNumber(bearer, projectId);
+  if (assigned) return assigned;
   return createImessageLine(bearer, projectId);
 }
 
