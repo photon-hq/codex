@@ -172,6 +172,18 @@ export async function getSession(bearer: string): Promise<{ user: SessionUser } 
   };
 }
 
+export async function checkPhoneAvailability(
+  bearer: string,
+  phoneNumber: string,
+): Promise<{ available: boolean }> {
+  const res = await fetch(
+    `${dashboardHost()}/api/projects/check-availability?phoneNumber=${encodeURIComponent(phoneNumber)}`,
+    { headers: { authorization: `Bearer ${bearer}` } },
+  );
+  const body = await expectOk<{ available?: boolean }>(res, "check-phone-availability");
+  return { available: !!body?.available };
+}
+
 export interface SpectrumUserResult {
   user?: {
     id?: string;

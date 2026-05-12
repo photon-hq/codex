@@ -4,6 +4,7 @@ import { encrypt } from "@/lib/crypto";
 import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
+  checkPhoneAvailability,
   createProject,
   createSpectrumUser,
   getProject,
@@ -93,6 +94,25 @@ export async function POST(req: Request) {
     const session = await getSession(bearer);
     if (!session) {
       return NextResponse.json({ error: "session invalid" }, { status: 401 });
+    }
+
+    try {
+      const availability = await checkPhoneAvailability(bearer, userPhone);
+      if (!availability.available) {
+        return NextResponse.json(
+          {
+            error:
+              "That phone is already registered on Spectrum. Use a phone you haven't used with Spectrum (Google Voice works well).",
+            reason: "phone_conflict",
+          },
+          { status: 409 },
+        );
+      }
+    } catch (err) {
+      console.warn(
+        "[provision] check-availability failed (continuing):",
+        err instanceof Error ? err.message : err,
+      );
     }
 
     const db = getDb();
