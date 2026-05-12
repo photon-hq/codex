@@ -16,7 +16,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Stage = "key" | "device" | "provision" | "done";
+type Stage = "key" | "device" | "phone" | "provision" | "done";
 
 interface DeviceState {
   user_code: string;
@@ -34,15 +34,17 @@ interface TenantState {
 const STEP_INDEX: Record<Stage, number> = {
   key: 0,
   device: 1,
-  provision: 1,
-  done: 2,
+  phone: 2,
+  provision: 2,
+  done: 3,
 };
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
 
 export default function OnboardClient() {
   const router = useRouter();
   const [stage, setStage] = useState<Stage>("key");
   const [apiKey, setApiKey] = useState("");
+  const [userPhone, setUserPhone] = useState("");
   const [device, setDevice] = useState<DeviceState | null>(null);
   const [tenant, setTenant] = useState<TenantState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -98,7 +100,7 @@ export default function OnboardClient() {
         if (cancelled) return;
         switch (data.status) {
           case "ok":
-            setStage("provision");
+            setStage("phone");
             return;
           case "pending":
             pollTimer = setTimeout(poll, interval);
@@ -144,7 +146,7 @@ export default function OnboardClient() {
     void fetch("/api/provision", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ openaiKey: apiKey.trim() }),
+      body: JSON.stringify({ openaiKey: apiKey.trim(), userPhone: userPhone.trim() }),
     })
       .then(async (res) => {
         if (cancelled) return;
@@ -173,7 +175,7 @@ export default function OnboardClient() {
     return () => {
       cancelled = true;
     };
-  }, [stage, apiKey]);
+  }, [stage, apiKey, userPhone]);
 
   const activeIdx = STEP_INDEX[stage];
 
@@ -194,6 +196,9 @@ export default function OnboardClient() {
           beginSpectrum={beginSpectrum}
           device={device}
           tenant={tenant}
+          userPhone={userPhone}
+          setUserPhone={setUserPhone}
+          onPhoneSubmit={() => setStage("provision")}
         />
       </div>
     </div>
@@ -205,6 +210,7 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "key":
       return <ChatGPTChip />;
     case "device":
+    case "phone":
       return <SpectrumChip />;
     case "provision":
     case "done":
@@ -243,6 +249,9 @@ interface StageContentProps {
   beginSpectrum: () => void;
   device: DeviceState | null;
   tenant: TenantState | null;
+  userPhone: string;
+  setUserPhone: (v: string) => void;
+  onPhoneSubmit: () => void;
 }
 
 function StageContent({
@@ -253,6 +262,9 @@ function StageContent({
   beginSpectrum,
   device,
   tenant,
+  userPhone,
+  setUserPhone,
+  onPhoneSubmit,
 }: StageContentProps) {
   switch (stage) {
     case "key":
@@ -269,6 +281,16 @@ function StageContent({
           </p>
           {device && <DeviceCard device={device} />}
         </>
+      );
+
+    case "phone":
+      return (
+        <PhoneStage
+          userPhone={userPhone}
+          setUserPhone={setUserPhone}
+          busy={busy}
+          onSubmit={onPhoneSubmit}
+        />
       );
 
     case "provision":
@@ -298,6 +320,103 @@ function StageContent({
         </>
       );
   }
+}
+
+function PhoneStage({
+  userPhone,
+  setUserPhone,
+  busy,
+  onSubmit,
+}: {
+  userPhone: string;
+  setUserPhone: (v: string) => void;
+  busy: boolean;
+  onSubmit: () => void;
+}) {
+  const [shaking, setShaking] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const trimmed = userPhone.trim();
+  const isValid = useMemo(() => /^\+[1-9]\d{6,14}$/.test(trimmed), [trimmed]);
+  const isEmpty = trimmed.length === 0;
+
+  const state: "valid" | "invalid" | "neutral" = isValid
+    ? "valid"
+    : attempted && !isEmpty
+      ? "invalid"
+      : "neutral";
+
+  const handleSubmit = () => {
+    if (!isValid) {
+      setAttempted(true);
+      setShaking(true);
+      setTimeout(() => setShaking(false), 420);
+      toast.error("That doesn't look like a phone number", {
+        description: "Use E.164 format, e.g. +14155550123.",
+      });
+      return;
+    }
+    onSubmit();
+  };
+
+  return (
+    <>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Your phone number</h1>
+      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
+        Spectrum uses this to assign you a shared iMessage bot you can text.
+      </p>
+      <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
+        <form
+          className={`flex w-full flex-col gap-3 ${shaking ? "shake" : ""}`}
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSubmit();
+          }}
+          noValidate
+        >
+          <div className="relative">
+            <input
+              className="input-glass font-mono text-center text-[15px] tracking-[0.02em] pr-10"
+              type="tel"
+              inputMode="tel"
+              placeholder="+14155550123"
+              autoComplete="tel"
+              spellCheck={false}
+              value={userPhone}
+              onChange={(e) => {
+                setUserPhone(e.target.value);
+                if (attempted) setAttempted(false);
+              }}
+              disabled={busy}
+              aria-label="Your phone number (E.164)"
+              aria-invalid={state === "invalid" || undefined}
+              data-state={state === "neutral" ? undefined : state}
+              required
+            />
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+              {state === "valid" ? (
+                <Check size={16} className="text-[var(--color-success)]" />
+              ) : state === "invalid" ? (
+                <AlertCircle size={16} className="text-[var(--color-danger)]" />
+              ) : null}
+            </span>
+          </div>
+          <button
+            type="submit"
+            className="btn-pill-primary inline-flex w-full items-center justify-center"
+            disabled={busy || isEmpty}
+          >
+            {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+            Continue
+            {!busy && <ArrowRight size={14} className="ml-1.5" />}
+          </button>
+          <p className="mt-1 text-[12px] text-[var(--color-text-dim)]">
+            Include the country code. We never message you — Spectrum uses this to register your
+            account.
+          </p>
+        </form>
+      </div>
+    </>
+  );
 }
 
 function KeyStage({

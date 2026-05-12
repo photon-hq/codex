@@ -134,6 +134,8 @@ export interface SessionUser {
   email?: string | null;
   name?: string | null;
   image?: string | null;
+  phoneNumber?: string | null;
+  [key: string]: unknown;
 }
 
 export async function getSession(bearer: string): Promise<{ user: SessionUser } | null> {
@@ -144,6 +146,53 @@ export async function getSession(bearer: string): Promise<{ user: SessionUser } 
   const body = (await expectOk<{ user?: SessionUser }>(res, "get-session")) ?? {};
   if (!body.user) return null;
   return { user: body.user };
+}
+
+export interface SpectrumUserResult {
+  user?: {
+    id?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    phoneNumber?: string | null;
+    [key: string]: unknown;
+  };
+  success?: boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export async function createSpectrumUser(
+  bearer: string,
+  projectId: string,
+  input: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber: string;
+    sendInvite?: boolean;
+  },
+): Promise<SpectrumUserResult> {
+  const res = await fetch(
+    `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${bearer}`,
+      },
+      body: JSON.stringify({
+        firstName: input.firstName,
+        lastName: input.lastName,
+        email: input.email,
+        phoneNumber: input.phoneNumber,
+        sendInvite: input.sendInvite ?? false,
+      }),
+    },
+  );
+  const body = await expectOk<SpectrumUserResult>(res, "create-spectrum-user");
+  if (body?.error) throw new SpectrumError(body.error, 500, body);
+  return body ?? {};
 }
 
 export interface CreateProjectInput {
