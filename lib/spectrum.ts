@@ -231,6 +231,19 @@ interface CreateLineResult {
   error?: string;
 }
 
+export async function listLines(bearer: string, projectId: string): Promise<SpectrumLine[]> {
+  const res = await fetch(
+    `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/lines`,
+    {
+      headers: { authorization: `Bearer ${bearer}` },
+    },
+  );
+  const body = await expectOk<SpectrumLine[] | { data?: SpectrumLine[] }>(res, "list-lines");
+  if (Array.isArray(body)) return body;
+  if (body && typeof body === "object" && Array.isArray(body.data)) return body.data;
+  return [];
+}
+
 export async function createImessageLine(
   bearer: string,
   projectId: string,
@@ -252,6 +265,21 @@ export async function createImessageLine(
     throw new SpectrumError("create-line returned malformed body", 500, body);
   }
   return { id: body.line.id, phoneNumber: body.line.phoneNumber };
+}
+
+export async function ensureImessageLine(
+  bearer: string,
+  projectId: string,
+): Promise<{ id: string; phoneNumber: string }> {
+  const existing = await listLines(bearer, projectId);
+  const imessage = existing.find(
+    (l) =>
+      l.platform === "imessage" && typeof l.phoneNumber === "string" && l.phoneNumber.length > 0,
+  );
+  if (imessage?.phoneNumber) {
+    return { id: imessage.id, phoneNumber: imessage.phoneNumber };
+  }
+  return createImessageLine(bearer, projectId);
 }
 
 export function imessageRedirectUrl(phoneNumber: string): string {

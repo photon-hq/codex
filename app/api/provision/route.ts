@@ -4,8 +4,8 @@ import { encrypt } from "@/lib/crypto";
 import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
-  createImessageLine,
   createProject,
+  ensureImessageLine,
   getSession,
   imessageRedirectUrl,
   regenerateProjectSecret,
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
 
     await togglePlatform(bearer, project.id, "imessage", true);
 
-    const line = await createImessageLine(bearer, project.id);
+    const line = await ensureImessageLine(bearer, project.id);
 
     const projectSecretBlob = encrypt(projectSecret);
     const openaiBlob = openaiKey ? encrypt(openaiKey) : null;
@@ -121,6 +121,17 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("[provision] failed", err);
+    if (err instanceof SpectrumError && err.status === 403) {
+      return NextResponse.json(
+        {
+          error:
+            "Your Spectrum project needs the Business plan to add an iMessage line. Upgrade in the Spectrum dashboard and retry.",
+          reason: "plan_required",
+          billingUrl: `${process.env.SPECTRUM_API_HOST ?? "https://app.photon.codes"}/billing`,
+        },
+        { status: 402 },
+      );
+    }
     const status = err instanceof SpectrumError ? err.status : 500;
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "provision failed" },
