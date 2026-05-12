@@ -197,6 +197,14 @@ export async function createSpectrumUser(
     sendInvite?: boolean;
   },
 ): Promise<SpectrumUserResult> {
+  const payload = {
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    phoneNumber: input.phoneNumber,
+    sendInvite: input.sendInvite ?? false,
+  };
+  console.log("[spectrum] create-user request:", JSON.stringify(payload));
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
     {
@@ -205,18 +213,56 @@ export async function createSpectrumUser(
         "content-type": "application/json",
         authorization: `Bearer ${bearer}`,
       },
-      body: JSON.stringify({
-        firstName: input.firstName,
-        lastName: input.lastName,
-        email: input.email,
-        phoneNumber: input.phoneNumber,
-        sendInvite: input.sendInvite ?? false,
-      }),
+      body: JSON.stringify(payload),
     },
   );
-  const body = await expectOk<SpectrumUserResult>(res, "create-spectrum-user");
+  if (!res.ok) {
+    const raw = (await asJson(res)) as unknown;
+    console.warn(
+      `[spectrum] create-user ${res.status} ${res.statusText} body=${JSON.stringify(raw)}`,
+    );
+    throw new SpectrumError(
+      `create-spectrum-user failed: ${res.status} ${res.statusText}`,
+      res.status,
+      raw,
+    );
+  }
+  const body = (await asJson(res)) as SpectrumUserResult | null;
   if (body?.error) throw new SpectrumError(body.error, 500, body);
   return body ?? {};
+}
+
+export async function setSpectrumProfile(
+  bearer: string,
+  projectId: string,
+  input: { firstName?: string; lastName?: string; avatarUrl?: string },
+): Promise<Record<string, unknown> | null> {
+  const body: Record<string, string> = {};
+  if (input.firstName) body.firstName = input.firstName;
+  if (input.lastName) body.lastName = input.lastName;
+  if (input.avatarUrl) body.avatarUrl = input.avatarUrl;
+  if (Object.keys(body).length === 0) return null;
+  try {
+    const res = await fetch(
+      `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/profile`,
+      {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${bearer}`,
+        },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!res.ok) {
+      console.warn(`[spectrum] set-profile non-ok: ${res.status} ${res.statusText}`);
+      return null;
+    }
+    return (await asJson(res)) as Record<string, unknown> | null;
+  } catch (err) {
+    console.warn("[spectrum] set-profile failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 export async function listSpectrumUsers(

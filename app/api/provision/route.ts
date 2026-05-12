@@ -12,6 +12,7 @@ import {
   listSpectrumUsers,
   provisionImessage,
   regenerateProjectSecret,
+  setSpectrumProfile,
   togglePlatform,
 } from "@/lib/spectrum";
 import { eq } from "drizzle-orm";
@@ -172,21 +173,40 @@ export async function POST(req: Request) {
 
     const fullName = session.user.name?.trim() ?? "";
     const [firstName, ...rest] = fullName.split(/\s+/);
-    const userResp = await createSpectrumUser(bearer, project.id, {
-      firstName: firstName || "Codex",
-      lastName: rest.join(" ") || "User",
-      email: session.user.email ?? `${session.user.id}@codex.local`,
-      phoneNumber: ownerPhone,
-      sendInvite: false,
+    const firstNameSafe = firstName || "Codex";
+    const lastNameSafe = rest.join(" ") || "User";
+
+    const profileResp = await setSpectrumProfile(bearer, project.id, {
+      firstName: firstNameSafe,
+      lastName: lastNameSafe,
     });
-    console.log("[provision] create-spectrum-user response:", JSON.stringify(userResp));
+    if (profileResp) console.log("[provision] set-profile ok");
+
+    let userResp: Awaited<ReturnType<typeof createSpectrumUser>> | null = null;
+    try {
+      userResp = await createSpectrumUser(bearer, project.id, {
+        firstName: firstNameSafe,
+        lastName: lastNameSafe,
+        email: session.user.email ?? `${session.user.id}@codex.local`,
+        phoneNumber: ownerPhone,
+        sendInvite: false,
+      });
+      console.log("[provision] create-spectrum-user response:", JSON.stringify(userResp));
+    } catch (err) {
+      console.warn(
+        "[provision] create-spectrum-user failed (continuing):",
+        err instanceof Error ? err.message : err,
+      );
+    }
 
     let line: { id: string; phoneNumber: string } | null = null;
 
-    const fromUser = pickPhoneFrom(userResp, ownerPhone);
-    if (fromUser) {
-      line = { id: userResp.user?.id ?? `${cloudProjectId}:imessage`, phoneNumber: fromUser };
-      console.log(`[provision] picked bot number from user-add response: ${fromUser}`);
+    if (userResp) {
+      const fromUser = pickPhoneFrom(userResp, ownerPhone);
+      if (fromUser) {
+        line = { id: userResp.user?.id ?? `${cloudProjectId}:imessage`, phoneNumber: fromUser };
+        console.log(`[provision] picked bot number from user-add response: ${fromUser}`);
+      }
     }
 
     if (!line) {
@@ -214,10 +234,20 @@ export async function POST(req: Request) {
     }
 
     if (!line) {
+      const sharedFallback = process.env.SPECTRUM_SHARED_IMESSAGE_NUMBER?.trim();
+      if (sharedFallback) {
+        line = { id: `${cloudProjectId}:imessage:shared`, phoneNumber: sharedFallback };
+        console.log(
+          `[provision] using SPECTRUM_SHARED_IMESSAGE_NUMBER fallback: ${sharedFallback}`,
+        );
+      }
+    }
+
+    if (!line) {
       throw new SpectrumError(
-        "Couldn't read the assigned iMessage number from Spectrum. Set SPECTRUM_SHARED_IMESSAGE_NUMBER to the shared inbound number, or check the Spectrum dashboard.",
+        "Spectrum didn't return an iMessage number. Set SPECTRUM_SHARED_IMESSAGE_NUMBER to the shared inbound number, or check the Spectrum dashboard.",
         500,
-        { userResp },
+        { userResp, profileResp },
       );
     }
 
