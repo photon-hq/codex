@@ -2,7 +2,15 @@
 
 import { BackHomePill, CodexIcon, TopNav } from "@/components/chrome";
 import { isOpenAIKeyShape } from "@/lib/openai-key";
-import { AlertCircle, Check, Copy, KeyRound, LogOut, MessageSquare } from "lucide-react";
+import {
+  AlertCircle,
+  Check,
+  ChevronDown,
+  Copy,
+  KeyRound,
+  LogOut,
+  MessageSquare,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -107,14 +115,14 @@ export default function DashboardClient() {
               <CodexIcon size="clamp(56px, 6.5vw, 68px)" radius="18px" />
             </div>
 
-            <div className="fade-up fade-up-3 mt-5 inline-flex items-center gap-2 text-[12px] text-[var(--color-text-muted)]">
-              <span className="dot dot-ok" /> Active
+            <div className="fade-up fade-up-3 mt-5 inline-flex items-center gap-2 rounded-full bg-white/55 px-2.5 py-1 text-[11.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] shadow-[0_1px_0_rgba(255,255,255,0.6)_inset]">
+              <span className="dot dot-ok m-0" /> Active
             </div>
 
             <span className="eyebrow fade-up fade-up-4 mt-5">Your Codex iMessage number</span>
             <CopyableNumber number={me.tenant.phoneNumber} />
 
-            <div className="fade-up fade-up-6 mt-7 flex flex-col items-center gap-3">
+            <div className="fade-up fade-up-6 mt-7 flex flex-col items-center gap-2">
               {me.tenant.redirectUri && (
                 <a
                   href={me.tenant.redirectUri}
@@ -125,9 +133,9 @@ export default function DashboardClient() {
               )}
               <a
                 href={`sms:${me.tenant.phoneNumber}`}
-                className="text-[13px] font-medium tracking-[-0.01em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                className="text-[12.5px] tracking-[-0.005em] text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
               >
-                Open as sms:// link
+                or open as sms://
               </a>
             </div>
 
@@ -139,9 +147,13 @@ export default function DashboardClient() {
               />
             </div>
 
-            <details className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
-              <summary className="cursor-pointer list-none text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
-                How it works
+            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
+                <span>How it works</span>
+                <ChevronDown
+                  size={14}
+                  className="text-[var(--color-text-muted)] transition-transform duration-200 group-open:rotate-180"
+                />
               </summary>
               <ul className="mt-3 flex flex-col gap-2 body-small">
                 <li>
@@ -159,12 +171,15 @@ export default function DashboardClient() {
               </ul>
             </details>
 
-            <details className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
+            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
               <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
                 <span className="inline-flex items-center gap-2">
                   <KeyRound size={14} /> OpenAI key
                 </span>
-                <span className="body-small text-[var(--color-text-muted)]">Rotate</span>
+                <ChevronDown
+                  size={14}
+                  className="text-[var(--color-text-muted)] transition-transform duration-200 group-open:rotate-180"
+                />
               </summary>
               <p className="mt-3 body-small text-[var(--color-text-dim)]">
                 Stored AES-256-GCM encrypted. Revoking on platform.openai.com takes effect instantly
@@ -282,14 +297,14 @@ function CopyableNumber({ number }: { number: string }) {
           toast.error("Couldn't copy", { description: "Clipboard access was denied." });
         }
       }}
-      className="fade-up fade-up-5 group mt-2 inline-flex items-center gap-2"
+      className="fade-up fade-up-5 group relative mt-2 inline-flex items-center gap-2 rounded-xl px-3 py-1.5 outline-none transition-colors duration-150 hover:bg-white/45 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.18)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
       aria-label="Copy phone number"
     >
       <span className="font-mono text-[clamp(28px,3.6vw,40px)] font-medium tracking-[-0.01em] text-[var(--color-text)]">
         {number}
       </span>
       <span
-        className={`text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+        className={`text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-60 group-hover:opacity-100"}`}
       >
         {copied ? <Check size={16} className="text-[var(--color-success)]" /> : <Copy size={16} />}
       </span>

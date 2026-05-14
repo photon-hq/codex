@@ -630,43 +630,51 @@ function DeviceCard({ device }: { device: DeviceState }) {
   const firstHalf = device.user_code.slice(0, half);
   const secondHalf = device.user_code.slice(half);
 
+  const host = new URL(device.verification_uri).hostname;
+
   return (
     <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center">
-      <button
-        type="button"
-        onClick={copy}
-        className="group relative font-mono text-[clamp(30px,3.8vw,38px)] font-medium leading-none tabular-nums text-[var(--color-text)] transition-opacity hover:opacity-85"
-        style={{ letterSpacing: "0.18em" }}
-        aria-label="Copy verification code"
-      >
-        <span className="inline-flex items-baseline" style={{ paddingLeft: "0.18em" }}>
-          <span>{firstHalf}</span>
-          <span aria-hidden className="inline-block" style={{ width: "0.32em" }} />
-          <span>{secondHalf}</span>
-        </span>
-        <span
-          aria-hidden
-          className={`pointer-events-none absolute -right-8 top-1/2 -translate-y-1/2 transition-opacity ${
-            copied
-              ? "opacity-100 text-[var(--color-success)]"
-              : "opacity-0 text-[var(--color-text-muted)] group-hover:opacity-100"
-          }`}
-        >
-          {copied ? <Check size={16} /> : <Copy size={16} />}
-        </span>
-      </button>
       <a
         href={openUrl}
         target="_blank"
         rel="noreferrer"
-        className="btn-pill-primary mt-7 inline-flex items-center gap-1.5"
+        className="btn-pill-primary inline-flex items-center gap-1.5"
       >
-        Open {new URL(device.verification_uri).hostname}
+        Continue on {host}
         <ExternalLink size={13} />
       </a>
-      <div className="mt-5 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
+      <div className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
         <Loader2 size={12} className="animate-spin" />
         <span>Waiting for you to approve&hellip;</span>
+      </div>
+
+      <div className="mt-7 flex flex-col items-center">
+        <span className="text-[11.5px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+          If asked, paste this code
+        </span>
+        <button
+          type="button"
+          onClick={copy}
+          className="group relative mt-2 rounded-lg font-mono text-[clamp(22px,2.6vw,28px)] font-medium leading-none tabular-nums text-[var(--color-text)] outline-none transition-opacity hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.2)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          style={{ letterSpacing: "0.18em" }}
+          aria-label="Copy verification code"
+        >
+          <span className="inline-flex items-baseline" style={{ paddingLeft: "0.18em" }}>
+            <span>{firstHalf}</span>
+            <span aria-hidden className="inline-block" style={{ width: "0.32em" }} />
+            <span>{secondHalf}</span>
+          </span>
+          <span
+            aria-hidden
+            className={`pointer-events-none absolute -right-7 top-1/2 -translate-y-1/2 transition-opacity ${
+              copied
+                ? "opacity-100 text-[var(--color-success)]"
+                : "opacity-0 text-[var(--color-text-muted)] group-hover:opacity-100"
+            }`}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+          </span>
+        </button>
       </div>
     </div>
   );
