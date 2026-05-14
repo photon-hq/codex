@@ -79,8 +79,36 @@ export default function OnboardClient() {
   }, [router]);
 
   const beginSpectrum = useCallback(async () => {
+    const key = apiKey.trim();
+    if (!isOpenAIKeyShape(key)) {
+      toast.error("That doesn't look like an OpenAI key", {
+        description: "Keys start with sk- and are at least 40 characters.",
+      });
+      return;
+    }
     setBusy(true);
     try {
+      const verifyRes = await fetch("/api/openai-key/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ apiKey: key }),
+      });
+      if (!verifyRes.ok) {
+        const body = (await verifyRes.json().catch(() => ({}))) as {
+          error?: string;
+          reason?: string;
+        };
+        const titleByReason: Record<string, string> = {
+          unauthorized: "Key rejected",
+          forbidden: "Key lacks permissions",
+          rate_limited: "Rate limited — try again",
+          network_error: "Couldn't reach OpenAI",
+        };
+        const title = (body.reason && titleByReason[body.reason]) ?? "Couldn't verify key";
+        toast.error(title, { description: body.error ?? "OpenAI key verification failed." });
+        return;
+      }
+
       const res = await fetch("/api/oauth/device/start", { method: "POST" });
       if (!res.ok) throw new Error((await res.json()).error ?? "device flow start failed");
       const data = (await res.json()) as DeviceState;
@@ -93,7 +121,7 @@ export default function OnboardClient() {
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     if (stage !== "device" || !device) return;
