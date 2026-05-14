@@ -43,12 +43,29 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
       <head>
+        <link rel="preconnect" href="https://persistent.oaistatic.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://persistent.oaistatic.com" />
+        <link
+          rel="preload"
+          as="image"
+          href="https://persistent.oaistatic.com/codex/icon.png"
+          fetchPriority="high"
+        />
+        <link
+          rel="preload"
+          as="video"
+          href="https://persistent.oaistatic.com/codex/icon-gif.mp4"
+          type="video/mp4"
+          crossOrigin="anonymous"
+          fetchPriority="high"
+        />
         <link
           rel="preload"
           as="video"
           href="https://persistent.oaistatic.com/codex/background-video-jan-28.mp4"
           type="video/mp4"
           crossOrigin="anonymous"
+          fetchPriority="low"
         />
       </head>
       <body className="hero-bg relative min-h-dvh overflow-x-hidden">

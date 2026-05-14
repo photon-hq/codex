@@ -139,7 +139,7 @@ export default function DashboardClient() {
               />
             </div>
 
-            <details className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur transition-all open:bg-white/60 sm:p-5">
+            <details className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
               <summary className="cursor-pointer list-none text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
                 How it works
               </summary>
@@ -159,7 +159,7 @@ export default function DashboardClient() {
               </ul>
             </details>
 
-            <details className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur transition-all open:bg-white/60 sm:p-5">
+            <details className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
               <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
                 <span className="inline-flex items-center gap-2">
                   <KeyRound size={14} /> OpenAI key

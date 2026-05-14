@@ -32,8 +32,9 @@ export function BackdropVideo() {
       loop
       muted
       playsInline
-      preload="auto"
+      preload="metadata"
       aria-hidden
+      disablePictureInPicture
       className="pointer-events-none absolute inset-0 -z-10 h-full w-full object-cover"
     >
       <source src={CODEX_BG_VIDEO} type="video/mp4" />
@@ -106,6 +107,7 @@ export function CodexIcon({
         preload="auto"
         poster={CODEX_ICON_POSTER}
         aria-label="Codex"
+        disablePictureInPicture
         className="h-full w-full object-cover"
       >
         <source src={CODEX_ICON_VIDEO} type="video/mp4" />
