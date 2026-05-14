@@ -134,29 +134,26 @@ export function ChatGPTChip({
 
 export function SpectrumChip({
   size = "clamp(56px, 6.5vw, 68px)",
-  radius = "18px",
 }: {
   size?: string;
-  radius?: string;
 }) {
   return (
     <div
-      className="relative overflow-hidden shadow-[0_18px_48px_-22px_rgba(40,30,90,0.35)]"
+      className="relative"
       style={{
         width: size,
         height: size,
-        borderRadius: radius,
-        background: "radial-gradient(120% 100% at 30% 20%, #2a2655 0%, #1a1638 55%, #0f0c26 100%)",
+        filter: "drop-shadow(0 18px 32px rgba(40,30,90,0.35))",
       }}
       aria-label="Spectrum"
     >
       <Image
         src="/spectrum-mark.png"
         alt=""
-        width={180}
-        height={180}
+        width={256}
+        height={256}
         priority
-        className="absolute inset-0 h-full w-full object-cover"
+        className="h-full w-full select-none"
       />
     </div>
   );

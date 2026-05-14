@@ -231,7 +231,6 @@ export default function OnboardClient() {
           setLastName={setLastName}
           userPhone={userPhone}
           setUserPhone={setUserPhone}
-          sessionEmail={sessionUser?.email ?? null}
           onDetailsSubmit={() => setStage("provision")}
         />
       </div>
@@ -289,7 +288,6 @@ interface StageContentProps {
   setLastName: (v: string) => void;
   userPhone: string;
   setUserPhone: (v: string) => void;
-  sessionEmail: string | null;
   onDetailsSubmit: () => void;
 }
 
@@ -307,7 +305,6 @@ function StageContent({
   setLastName,
   userPhone,
   setUserPhone,
-  sessionEmail,
   onDetailsSubmit,
 }: StageContentProps) {
   switch (stage) {
@@ -336,7 +333,6 @@ function StageContent({
           setLastName={setLastName}
           userPhone={userPhone}
           setUserPhone={setUserPhone}
-          sessionEmail={sessionEmail}
           busy={busy}
           onSubmit={onDetailsSubmit}
         />
@@ -378,7 +374,6 @@ function DetailsStage({
   setLastName,
   userPhone,
   setUserPhone,
-  sessionEmail,
   busy,
   onSubmit,
 }: {
@@ -388,7 +383,6 @@ function DetailsStage({
   setLastName: (v: string) => void;
   userPhone: string;
   setUserPhone: (v: string) => void;
-  sessionEmail: string | null;
   busy: boolean;
   onSubmit: () => void;
 }) {
@@ -506,10 +500,6 @@ function DetailsStage({
             Continue
             {!busy && <ArrowRight size={14} className="ml-1.5" />}
           </button>
-          <p className="mt-1 text-[12px] text-[var(--color-text-dim)]">
-            Use a phone that isn&rsquo;t already on your Spectrum account.
-            {sessionEmail ? <> Email on file: {sessionEmail}.</> : null}
-          </p>
         </form>
       </div>
     </>
@@ -637,7 +627,8 @@ function DeviceCard({ device }: { device: DeviceState }) {
   };
   const openUrl = device.verification_uri_complete ?? device.verification_uri;
   const half = Math.ceil(device.user_code.length / 2);
-  const formatted = `${device.user_code.slice(0, half)} ${device.user_code.slice(half)}`;
+  const firstHalf = device.user_code.slice(0, half);
+  const secondHalf = device.user_code.slice(half);
 
   return (
     <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center">
@@ -645,13 +636,17 @@ function DeviceCard({ device }: { device: DeviceState }) {
         type="button"
         onClick={copy}
         className="group relative font-mono text-[clamp(30px,3.8vw,38px)] font-medium leading-none tabular-nums text-[var(--color-text)] transition-opacity hover:opacity-85"
-        style={{ letterSpacing: "0.16em", wordSpacing: "0.55em" }}
+        style={{ letterSpacing: "0.18em" }}
         aria-label="Copy verification code"
       >
-        {formatted}
+        <span className="inline-flex items-baseline" style={{ paddingLeft: "0.18em" }}>
+          <span>{firstHalf}</span>
+          <span aria-hidden className="inline-block" style={{ width: "0.7em" }} />
+          <span>{secondHalf}</span>
+        </span>
         <span
           aria-hidden
-          className={`pointer-events-none absolute -right-7 top-1/2 -translate-y-1/2 transition-opacity ${
+          className={`pointer-events-none absolute -right-8 top-1/2 -translate-y-1/2 transition-opacity ${
             copied
               ? "opacity-100 text-[var(--color-success)]"
               : "opacity-0 text-[var(--color-text-muted)] group-hover:opacity-100"
