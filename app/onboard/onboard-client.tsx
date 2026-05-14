@@ -641,7 +641,7 @@ function DeviceCard({ device }: { device: DeviceState }) {
       >
         <span className="inline-flex items-baseline" style={{ paddingLeft: "0.18em" }}>
           <span>{firstHalf}</span>
-          <span aria-hidden className="inline-block" style={{ width: "0.7em" }} />
+          <span aria-hidden className="inline-block" style={{ width: "0.32em" }} />
           <span>{secondHalf}</span>
         </span>
         <span
