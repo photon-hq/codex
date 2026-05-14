@@ -340,7 +340,10 @@ export async function listProjects(bearer: string): Promise<ProjectDetails[]> {
       headers: { authorization: `Bearer ${bearer}` },
     });
   } catch (err) {
-    console.warn("[spectrum] list-projects network error:", err instanceof Error ? err.message : err);
+    console.warn(
+      "[spectrum] list-projects network error:",
+      err instanceof Error ? err.message : err,
+    );
     return [];
   }
   if (!res.ok) {

@@ -238,11 +238,10 @@ export async function POST(req: Request) {
     }
 
     if (!assigned || !PHONE_RE.test(assigned)) {
-      throw new SpectrumError(
-        "Spectrum didn't return an assigned iMessage number.",
-        500,
-        { projectId, cloudProjectId },
-      );
+      throw new SpectrumError("Spectrum didn't return an assigned iMessage number.", 500, {
+        projectId,
+        cloudProjectId,
+      });
     }
 
     const projectSecretBlob = encrypt(projectSecret);
