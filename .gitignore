@@ -44,6 +44,7 @@ bun.lockb
 *-stage.png
 test-results/
 playwright-report/
+.firecrawl/
 
 # drizzle
 drizzle/migrations.json
