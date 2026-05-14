@@ -333,6 +333,30 @@ export async function getProject(bearer: string, projectId: string): Promise<Pro
   return expectOk<ProjectDetails>(res, "get-project");
 }
 
+export async function listProjects(bearer: string): Promise<ProjectDetails[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${dashboardHost()}/api/projects`, {
+      headers: { authorization: `Bearer ${bearer}` },
+    });
+  } catch (err) {
+    console.warn("[spectrum] list-projects network error:", err instanceof Error ? err.message : err);
+    return [];
+  }
+  if (!res.ok) {
+    console.warn(`[spectrum] list-projects non-ok: ${res.status} ${res.statusText}`);
+    return [];
+  }
+  const body = (await asJson(res)) as unknown;
+  if (Array.isArray(body)) return body as ProjectDetails[];
+  if (body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    if (Array.isArray(b.projects)) return b.projects as ProjectDetails[];
+    if (Array.isArray(b.data)) return b.data as ProjectDetails[];
+  }
+  return [];
+}
+
 export interface RegenerateSecretResult {
   success?: true;
   projectSecret?: string;
@@ -468,6 +492,32 @@ export async function cloudTogglePlatform(
     },
     "cloud-toggle-platform",
   );
+}
+
+export interface CloudProjectUser {
+  id?: string;
+  projectId?: string;
+  type?: "shared" | "dedicated";
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phoneNumber?: string | null;
+  assignedPhoneNumber?: string | null;
+  createdAt?: string;
+  [key: string]: unknown;
+}
+
+export async function listProjectUsers(
+  projectId: string,
+  projectSecret: string,
+): Promise<CloudProjectUser[]> {
+  const body = await cloudCall<{ users?: CloudProjectUser[] } | CloudProjectUser[] | null>(
+    `/projects/${encodeURIComponent(projectId)}/users/`,
+    { headers: { authorization: basicAuth(projectId, projectSecret) } },
+    "list-project-users",
+  );
+  if (Array.isArray(body)) return body;
+  return body?.users ?? [];
 }
 
 export function imessageRedirectUrl(phoneNumber: string): string {

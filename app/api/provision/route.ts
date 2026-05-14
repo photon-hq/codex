@@ -5,11 +5,14 @@ import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
   checkPhoneAvailability,
+  cloudTogglePlatform,
   createProject,
   createSpectrumUser,
   getProject,
   getSession,
   imessageRedirectUrl,
+  listProjectUsers,
+  listProjects,
   regenerateProjectSecret,
   setSpectrumProfile,
   togglePlatform,
@@ -96,25 +99,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "session invalid" }, { status: 401 });
     }
 
-    try {
-      const availability = await checkPhoneAvailability(bearer, userPhone);
-      if (!availability.available) {
-        return NextResponse.json(
-          {
-            error:
-              "That phone is already registered on Spectrum. Use a phone you haven't used with Spectrum (Google Voice works well).",
-            reason: "phone_conflict",
-          },
-          { status: 409 },
-        );
-      }
-    } catch (err) {
-      console.warn(
-        "[provision] check-availability failed (continuing):",
-        err instanceof Error ? err.message : err,
-      );
-    }
-
     const db = getDb();
     const existing = await db
       .select()
@@ -132,37 +116,110 @@ export async function POST(req: Request) {
       });
     }
 
-    const projectName = session.user.email
-      ? `codex (${session.user.email})`
-      : `codex (${session.user.id.slice(0, 8)})`;
+    let projectId: string | null = null;
+    let reused = false;
+    try {
+      const projects = await listProjects(bearer);
+      const ours = projects.find(
+        (p) =>
+          typeof p.name === "string" &&
+          p.name.toLowerCase().startsWith("codex ") &&
+          p.spectrum !== false,
+      );
+      if (ours?.id) {
+        projectId = ours.id;
+        reused = true;
+        console.log(`[provision] reusing existing project ${ours.id} (${ours.name})`);
+      }
+    } catch (err) {
+      console.warn(
+        "[provision] list-projects probe failed (continuing to create):",
+        err instanceof Error ? err.message : err,
+      );
+    }
 
-    const project = await createProject(bearer, { name: projectName, spectrum: true });
-    const { projectSecret } = await regenerateProjectSecret(bearer, project.id);
-    await togglePlatform(bearer, project.id, "imessage", true);
+    if (!projectId) {
+      try {
+        const availability = await checkPhoneAvailability(bearer, userPhone);
+        if (!availability.available) {
+          return NextResponse.json(
+            {
+              error:
+                "That phone is already registered on Spectrum. Use a phone you haven't used with Spectrum (Google Voice works well).",
+              reason: "phone_conflict",
+            },
+            { status: 409 },
+          );
+        }
+      } catch (err) {
+        console.warn(
+          "[provision] check-availability failed (continuing):",
+          err instanceof Error ? err.message : err,
+        );
+      }
 
-    const details = await getProject(bearer, project.id);
-    const cloudProjectId = details.spectrumProjectId ?? project.id;
+      const projectName = session.user.email
+        ? `codex (${session.user.email})`
+        : `codex (${session.user.id.slice(0, 8)})`;
+      const created = await createProject(bearer, { name: projectName, spectrum: true });
+      projectId = created.id;
+    }
+
+    const { projectSecret } = await regenerateProjectSecret(bearer, projectId);
+    await togglePlatform(bearer, projectId, "imessage", true);
+
+    const details = await getProject(bearer, projectId);
+    const cloudProjectId = details.spectrumProjectId ?? projectId;
     console.log(
-      `[provision] dashboard=${project.id} cloud=${details.spectrumProjectId ?? "(missing)"}`,
+      `[provision] dashboard=${projectId} cloud=${details.spectrumProjectId ?? "(missing)"} reused=${reused}`,
     );
 
-    await setSpectrumProfile(bearer, project.id, { firstName, lastName });
+    try {
+      await cloudTogglePlatform(cloudProjectId, projectSecret, "imessage", true);
+    } catch (err) {
+      console.warn(
+        "[provision] cloud iMessage toggle failed (non-fatal):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    await setSpectrumProfile(bearer, projectId, { firstName, lastName });
 
     const ownerEmail = session.user.email ?? `${session.user.id}@codex.local`;
 
-    const userResp = await createSpectrumUser(bearer, project.id, {
-      firstName,
-      lastName,
-      email: ownerEmail,
-      phoneNumber: userPhone,
-      sendInvite: false,
-    });
-
-    const assigned = userResp.user?.assignedPhoneNumber?.trim();
-    const spectrumUserRecordId = userResp.user?.id;
+    let assigned: string | undefined;
+    let spectrumUserRecordId: string | undefined;
+    try {
+      const userResp = await createSpectrumUser(bearer, projectId, {
+        firstName,
+        lastName,
+        email: ownerEmail,
+        phoneNumber: userPhone,
+        sendInvite: false,
+      });
+      assigned = userResp.user?.assignedPhoneNumber?.trim();
+      spectrumUserRecordId = userResp.user?.id;
+    } catch (err) {
+      if (!(err instanceof SpectrumError) || err.status !== 409 || !reused) throw err;
+      console.warn("[provision] create-user conflict on reused project, finding existing user");
+      const users = await listProjectUsers(cloudProjectId, projectSecret).catch(() => []);
+      const lowerEmail = ownerEmail.toLowerCase();
+      const match = users.find(
+        (u) =>
+          (u.phoneNumber && u.phoneNumber === userPhone) ||
+          (u.email && u.email.toLowerCase() === lowerEmail),
+      );
+      if (!match?.assignedPhoneNumber) throw err;
+      assigned = match.assignedPhoneNumber.trim();
+      spectrumUserRecordId = match.id;
+    }
 
     if (!assigned || !PHONE_RE.test(assigned)) {
-      throw new SpectrumError("Spectrum didn't return an assigned iMessage number.", 500, userResp);
+      throw new SpectrumError(
+        "Spectrum didn't return an assigned iMessage number.",
+        500,
+        { projectId, cloudProjectId },
+      );
     }
 
     const projectSecretBlob = encrypt(projectSecret);
