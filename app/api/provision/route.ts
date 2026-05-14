@@ -105,22 +105,50 @@ export async function POST(req: Request) {
       .from(tenants)
       .where(eq(tenants.spectrumUserId, session.user.id))
       .limit(1);
+
+    let upstreamProjects: Awaited<ReturnType<typeof listProjects>> | null = null;
+    let listProjectsErrored = false;
+    try {
+      upstreamProjects = await listProjects(bearer);
+    } catch (err) {
+      listProjectsErrored = true;
+      console.warn(
+        "[provision] list-projects probe failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
     if (existing.length > 0) {
       const t = existing[0];
-      return NextResponse.json({
-        status: "existing",
-        tenantId: t.id,
-        phoneNumber: t.phoneNumber,
-        redirectUri: imessageRedirectUrl(t.phoneNumber),
-        hasOpenAIKey: !!t.openaiKeyCiphertext,
-      });
+      let stillExists = true;
+      if (upstreamProjects) {
+        stillExists = upstreamProjects.some(
+          (p) =>
+            (p.spectrumProjectId && p.spectrumProjectId === t.spectrumProjectId) ||
+            p.id === t.spectrumProjectId,
+        );
+      }
+
+      if (stillExists || listProjectsErrored) {
+        return NextResponse.json({
+          status: "existing",
+          tenantId: t.id,
+          phoneNumber: t.phoneNumber,
+          redirectUri: imessageRedirectUrl(t.phoneNumber),
+          hasOpenAIKey: !!t.openaiKeyCiphertext,
+        });
+      }
+
+      console.log(
+        `[provision] upstream project gone (${t.spectrumProjectId}); removing stale tenant ${t.id} and re-provisioning`,
+      );
+      await db.delete(tenants).where(eq(tenants.id, t.id));
     }
 
     let projectId: string | null = null;
     let reused = false;
-    try {
-      const projects = await listProjects(bearer);
-      const ours = projects.find(
+    if (upstreamProjects) {
+      const ours = upstreamProjects.find(
         (p) =>
           typeof p.name === "string" &&
           p.name.toLowerCase().startsWith("codex ") &&
@@ -131,11 +159,6 @@ export async function POST(req: Request) {
         reused = true;
         console.log(`[provision] reusing existing project ${ours.id} (${ours.name})`);
       }
-    } catch (err) {
-      console.warn(
-        "[provision] list-projects probe failed (continuing to create):",
-        err instanceof Error ? err.message : err,
-      );
     }
 
     if (!projectId) {
