@@ -81,6 +81,12 @@ export class BridgeManager {
     this.lastSyncError = null;
   }
 
+  authDeadTenants(): string[] {
+    return Array.from(this.workers.values())
+      .filter((w) => w.isAuthDead)
+      .map((w) => w.id);
+  }
+
   async stop() {
     if (this.interval) {
       clearInterval(this.interval);

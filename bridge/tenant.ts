@@ -18,6 +18,7 @@ import { imessage } from "spectrum-ts/providers/imessage";
 const RESET_REACTION = "ok_hand";
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
+const AUTH_FAILURE_THRESHOLD = 5;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
@@ -67,13 +68,23 @@ export class TenantWorker {
   private lastError: string | null = null;
   private lastErrorAt: number | null = null;
   private consecutiveFailures = 0;
+  private consecutiveAuthFailures = 0;
   private messagesHandled = 0;
   private lastMessageAt: number | null = null;
+  private currentSecretCiphertext: string | null = null;
 
   constructor(private tenant: Tenant) {}
 
   get id() {
     return this.tenant.id;
+  }
+
+  get isAuthDead() {
+    return this.consecutiveAuthFailures >= AUTH_FAILURE_THRESHOLD;
+  }
+
+  get secretCiphertext() {
+    return this.tenant.spectrumProjectSecretCiphertext;
   }
 
   health(): TenantHealth {
@@ -110,11 +121,34 @@ export class TenantWorker {
   }
 
   refresh(next: Tenant) {
+    const secretChanged =
+      this.currentSecretCiphertext !== null &&
+      next.spectrumProjectSecretCiphertext !== this.currentSecretCiphertext;
     this.tenant = next;
+    if (secretChanged) {
+      console.log(`[tenant ${this.tenant.id}] secret rotated — restarting subscription`);
+      this.consecutiveAuthFailures = 0;
+      void this.app?.stop().catch(() => {});
+      this.app = null;
+      if (!this.running) {
+        this.running = true;
+        this.stopRequested = false;
+        void this.loop();
+      }
+    }
   }
 
   private async loop() {
     while (!this.stopRequested) {
+      if (this.isAuthDead) {
+        console.warn(
+          `[tenant ${this.tenant.id}] auth failed ${this.consecutiveAuthFailures}x — pausing until DB row updates`,
+        );
+        await this.logEvent("status", "auth_paused", {
+          consecutiveAuthFailures: this.consecutiveAuthFailures,
+        });
+        return;
+      }
       try {
         await this.subscribe();
         this.backoffMs = MIN_BACKOFF_MS;
@@ -124,6 +158,7 @@ export class TenantWorker {
         this.lastError = err instanceof Error ? err.message : String(err);
         this.lastErrorAt = Date.now();
         this.consecutiveFailures += 1;
+        if (isAuthError(err)) this.consecutiveAuthFailures += 1;
         console.error(
           `[tenant ${this.tenant.id}] subscription error (#${this.consecutiveFailures}):`,
           err,
@@ -136,6 +171,7 @@ export class TenantWorker {
   }
 
   private async subscribe() {
+    this.currentSecretCiphertext = this.tenant.spectrumProjectSecretCiphertext;
     const projectSecret = decrypt({
       ciphertext: this.tenant.spectrumProjectSecretCiphertext,
       iv: this.tenant.spectrumProjectSecretIv,
@@ -152,6 +188,7 @@ export class TenantWorker {
     this.subscribedAt = Date.now();
     this.lastError = null;
     this.consecutiveFailures = 0;
+    this.consecutiveAuthFailures = 0;
     console.log(
       `[tenant ${this.tenant.id}] subscribed (${this.tenant.phoneNumber}) project=${this.tenant.spectrumProjectId}`,
     );
@@ -434,6 +471,15 @@ export class TenantWorker {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isAuthError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const e = err as { status?: unknown; code?: unknown; message?: unknown };
+  if (e.status === 401 || e.status === 403) return true;
+  if (e.code === "401" || e.code === "403") return true;
+  const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
+  return /invalid credentials|unauthor|forbidden/.test(msg);
 }
 
 function serializeError(err: unknown): { name?: string; message: string; stack?: string } {
