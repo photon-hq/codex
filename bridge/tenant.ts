@@ -15,7 +15,7 @@ import { and, eq } from "drizzle-orm";
 import { type Message, type Space, Spectrum } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 
-const RESET_REACTION = "ok_hand";
+const RESET_REACTION = "👍";
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
