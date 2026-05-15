@@ -1,29 +1,38 @@
 # Codex on iMessage
 
-A coding agent that helps you build and ship with AI — powered by ChatGPT, now on iMessage.
+Text Codex like you'd text a teammate. Replies come back in the same thread,
+PRs included.
 
 ## How it works
 
-1. Paste your OpenAI API key
-2. Connect Spectrum and get a phone number
-3. Open iMessage with the number and start chatting
-
-Codex replies in the same thread. Send `/new` any time to start a fresh conversation.
+1. Sign in to ChatGPT (the same account that has Codex)
+2. Connect Spectrum and claim a phone number
+3. Open iMessage with that number — Codex replies inline
 
 ## Commands
 
-| Message                  | What it does                                            |
-| ------------------------ | ------------------------------------------------------- |
-| _anything_               | Asks Codex. Stateful — follow-ups remember the context. |
-| `/new`                   | Resets the conversation. Bot reacts with 👌 to confirm. |
+| Message                | What it does                                              |
+| ---------------------- | --------------------------------------------------------- |
+| _anything_             | Asks Codex. Threads are stateful — follow-ups remember.   |
+| `/help`                | Lists every command.                                      |
+| `/new`                 | Starts a fresh Codex thread. 👍 tapback to confirm.       |
+| `/branch`              | Shows the branch Codex runs against.                      |
+| `/branch <name>`       | Switches branch and starts a fresh thread.                |
+| `/switch`              | Lists your environments (repo + label).                   |
+| `/switch <label-or-id>`| Picks an environment and starts a fresh thread.           |
+| `/model`               | Shows the active model and a link to the chatgpt.com picker. |
+
+Every message you send gets a 👍 tapback when Codex picks it up, and the
+tapback flips to ❤️ when the task is finished.
 
 ## Privacy
 
-- Your OpenAI API key is AES-256-GCM encrypted at rest. Plaintext only exists in memory
-  while a message is being answered.
-- Messages go directly to OpenAI's Responses API — nothing is shared with third parties.
-- Revoke your key on the OpenAI dashboard any time; the bot will stop replying until you
-  rotate it.
+- ChatGPT OAuth tokens are AES-256-GCM encrypted at rest. Plaintext lives in
+  memory only while a request is in flight.
+- Messages flow to OpenAI Codex through your authenticated ChatGPT session —
+  nothing is shared with third parties.
+- Disconnect any time from the dashboard. Codex stops replying immediately
+  and the encrypted tokens are wiped.
 
 ## License
 
