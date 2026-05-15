@@ -722,7 +722,7 @@ function DeviceCardLayout({
 
       <div className="mt-7 flex flex-col items-center">
         <span className="text-[11.5px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
-          If asked, paste this code
+          Paste this code
         </span>
         <button
           type="button"
