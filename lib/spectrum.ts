@@ -203,19 +203,9 @@ export interface SpectrumUserResult {
 export async function createSpectrumUser(
   bearer: string,
   projectId: string,
-  input: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phoneNumber: string;
-  },
+  input: { phoneNumber: string },
 ): Promise<SpectrumUserResult> {
-  const payload = {
-    firstName: input.firstName,
-    lastName: input.lastName,
-    email: input.email,
-    phoneNumber: input.phoneNumber,
-  };
+  const payload = { phoneNumber: input.phoneNumber };
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
     {
@@ -243,39 +233,6 @@ export async function createSpectrumUser(
     throw new SpectrumError(body.error, 500, body);
   }
   return body ?? {};
-}
-
-export async function setSpectrumProfile(
-  bearer: string,
-  projectId: string,
-  input: { firstName?: string; lastName?: string; avatarUrl?: string },
-): Promise<Record<string, unknown> | null> {
-  const body: Record<string, string> = {};
-  if (input.firstName) body.firstName = input.firstName;
-  if (input.lastName) body.lastName = input.lastName;
-  if (input.avatarUrl) body.avatarUrl = input.avatarUrl;
-  if (Object.keys(body).length === 0) return null;
-  try {
-    const res = await fetch(
-      `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/profile`,
-      {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${bearer}`,
-        },
-        body: JSON.stringify(body),
-      },
-    );
-    if (!res.ok) {
-      console.warn(`[spectrum] set-profile non-ok: ${res.status} ${res.statusText}`);
-      return null;
-    }
-    return (await asJson(res)) as Record<string, unknown> | null;
-  } catch (err) {
-    console.warn("[spectrum] set-profile failed:", err instanceof Error ? err.message : err);
-    return null;
-  }
 }
 
 export interface CreateProjectInput {

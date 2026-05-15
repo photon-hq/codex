@@ -14,7 +14,6 @@ import {
   listProjectUsers,
   listProjects,
   regenerateProjectSecret,
-  setSpectrumProfile,
   togglePlatform,
 } from "@/lib/spectrum";
 import { eq } from "drizzle-orm";
@@ -64,23 +63,11 @@ export async function POST(req: Request) {
   }
 
   let userPhone: string | null = null;
-  let firstName: string | null = null;
-  let lastName: string | null = null;
 
   try {
-    const body = (await req.json().catch(() => ({}))) as {
-      userPhone?: unknown;
-      firstName?: unknown;
-      lastName?: unknown;
-    };
+    const body = (await req.json().catch(() => ({}))) as { userPhone?: unknown };
     if (typeof body.userPhone === "string" && body.userPhone.trim().length > 0) {
       userPhone = body.userPhone.trim();
-    }
-    if (typeof body.firstName === "string" && body.firstName.trim().length > 0) {
-      firstName = body.firstName.trim();
-    }
-    if (typeof body.lastName === "string" && body.lastName.trim().length > 0) {
-      lastName = body.lastName.trim();
     }
   } catch {}
 
@@ -90,12 +77,6 @@ export async function POST(req: Request) {
         error: "Add your phone number in E.164 format, e.g. +14155550123.",
         reason: "phone_required",
       },
-      { status: 422 },
-    );
-  }
-  if (!firstName || !lastName) {
-    return NextResponse.json(
-      { error: "First and last name are required.", reason: "name_required" },
       { status: 422 },
     );
   }
@@ -256,17 +237,10 @@ export async function POST(req: Request) {
       );
     }
 
-    await setSpectrumProfile(bearer, projectId, { firstName, lastName });
-
-    const ownerEmail = session.user.email ?? `${session.user.id}@codex.local`;
-
     let assigned: string | undefined;
     let spectrumUserRecordId: string | undefined;
     try {
       const userResp = await createSpectrumUser(bearer, projectId, {
-        firstName,
-        lastName,
-        email: ownerEmail,
         phoneNumber: userPhone,
       });
       assigned = userResp.user?.assignedPhoneNumber?.trim();
@@ -275,12 +249,7 @@ export async function POST(req: Request) {
       if (!(err instanceof SpectrumError) || err.status !== 409 || !reused) throw err;
       console.warn("[provision] create-user conflict on reused project, finding existing user");
       const users = await listProjectUsers(cloudProjectId, projectSecret).catch(() => []);
-      const lowerEmail = ownerEmail.toLowerCase();
-      const match = users.find(
-        (u) =>
-          (u.phoneNumber && u.phoneNumber === userPhone) ||
-          (u.email && u.email.toLowerCase() === lowerEmail),
-      );
+      const match = users.find((u) => u.phoneNumber && u.phoneNumber === userPhone);
       if (!match?.assignedPhoneNumber) throw err;
       assigned = match.assignedPhoneNumber.trim();
       spectrumUserRecordId = match.id;
@@ -302,7 +271,7 @@ export async function POST(req: Request) {
       .values({
         spectrumUserId: session.user.id,
         spectrumEmail: session.user.email ?? null,
-        spectrumUserName: `${firstName} ${lastName}`.trim(),
+        spectrumUserName: session.user.name ?? null,
         spectrumProjectId: cloudProjectId,
         spectrumProjectSecretCiphertext: projectSecretBlob.ciphertext,
         spectrumProjectSecretIv: projectSecretBlob.iv,

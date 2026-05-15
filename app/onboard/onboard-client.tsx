@@ -15,7 +15,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Stage = "codex" | "codex-device" | "spectrum-device" | "details" | "provision" | "done";
+type Stage = "codex" | "codex-device" | "spectrum-device" | "phone" | "provision" | "done";
 
 interface CodexDeviceState {
   user_code: string;
@@ -38,17 +38,11 @@ interface TenantState {
   redirectUri: string | null;
 }
 
-interface SessionUser {
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-}
-
 const STEP_INDEX: Record<Stage, number> = {
   codex: 0,
   "codex-device": 0,
   "spectrum-device": 1,
-  details: 2,
+  phone: 2,
   provision: 2,
   done: 3,
 };
@@ -58,10 +52,7 @@ export default function OnboardClient() {
   const router = useRouter();
   const [bootstrapped, setBootstrapped] = useState(false);
   const [stage, setStage] = useState<Stage>("codex");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [userPhone, setUserPhone] = useState("");
-  const [, setSessionUser] = useState<SessionUser | null>(null);
   const [codexDevice, setCodexDevice] = useState<CodexDeviceState | null>(null);
   const [codexUser, setCodexUser] = useState<{ email: string | null; name: string | null } | null>(
     null,
@@ -196,13 +187,7 @@ export default function OnboardClient() {
         if (cancelled) return;
         switch (data.status) {
           case "ok":
-            if (data.user) {
-              const u = data.user as SessionUser;
-              setSessionUser(u);
-              if (u.firstName) setFirstName(u.firstName);
-              if (u.lastName) setLastName(u.lastName);
-            }
-            setStage("details");
+            setStage("phone");
             return;
           case "pending":
             pollTimer = setTimeout(poll, interval);
@@ -243,8 +228,8 @@ export default function OnboardClient() {
 
   useEffect(() => {
     if (stage !== "provision") return;
-    if (!userPhone.trim() || !firstName.trim() || !lastName.trim()) {
-      setStage("details");
+    if (!userPhone.trim()) {
+      setStage("phone");
       return;
     }
     let cancelled = false;
@@ -252,18 +237,14 @@ export default function OnboardClient() {
     void fetch("/api/provision", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        userPhone: userPhone.trim(),
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-      }),
+      body: JSON.stringify({ userPhone: userPhone.trim() }),
     })
       .then(async (res) => {
         if (cancelled) return;
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           const reason = body.reason as string | undefined;
-          if (reason === "phone_conflict") setStage("details");
+          if (reason === "phone_conflict") setStage("phone");
           else if (reason === "codex_required") setStage("codex");
           else setStage("codex");
           throw new Error(body.error ?? `provision failed (${res.status})`);
@@ -288,7 +269,7 @@ export default function OnboardClient() {
     return () => {
       cancelled = true;
     };
-  }, [stage, userPhone, firstName, lastName]);
+  }, [stage, userPhone]);
 
   const activeIdx = STEP_INDEX[stage];
 
@@ -317,13 +298,9 @@ export default function OnboardClient() {
           codexUser={codexUser}
           spectrumDevice={spectrumDevice}
           tenant={tenant}
-          firstName={firstName}
-          setFirstName={setFirstName}
-          lastName={lastName}
-          setLastName={setLastName}
           userPhone={userPhone}
           setUserPhone={setUserPhone}
-          onDetailsSubmit={() => setStage("provision")}
+          onPhoneSubmit={() => setStage("provision")}
         />
       </div>
     </div>
@@ -336,7 +313,7 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "codex-device":
       return <ChatGPTChip />;
     case "spectrum-device":
-    case "details":
+    case "phone":
       return <SpectrumChip />;
     case "provision":
     case "done":
@@ -375,13 +352,9 @@ interface StageContentProps {
   codexUser: { email: string | null; name: string | null } | null;
   spectrumDevice: SpectrumDeviceState | null;
   tenant: TenantState | null;
-  firstName: string;
-  setFirstName: (v: string) => void;
-  lastName: string;
-  setLastName: (v: string) => void;
   userPhone: string;
   setUserPhone: (v: string) => void;
-  onDetailsSubmit: () => void;
+  onPhoneSubmit: () => void;
 }
 
 function StageContent({
@@ -392,13 +365,9 @@ function StageContent({
   codexUser,
   spectrumDevice,
   tenant,
-  firstName,
-  setFirstName,
-  lastName,
-  setLastName,
   userPhone,
   setUserPhone,
-  onDetailsSubmit,
+  onPhoneSubmit,
 }: StageContentProps) {
   switch (stage) {
     case "codex":
@@ -429,17 +398,13 @@ function StageContent({
         </>
       );
 
-    case "details":
+    case "phone":
       return (
-        <DetailsStage
-          firstName={firstName}
-          setFirstName={setFirstName}
-          lastName={lastName}
-          setLastName={setLastName}
+        <PhoneStage
           userPhone={userPhone}
           setUserPhone={setUserPhone}
           busy={busy}
-          onSubmit={onDetailsSubmit}
+          onSubmit={onPhoneSubmit}
         />
       );
 
@@ -473,20 +438,12 @@ function StageContent({
   }
 }
 
-function DetailsStage({
-  firstName,
-  setFirstName,
-  lastName,
-  setLastName,
+function PhoneStage({
   userPhone,
   setUserPhone,
   busy,
   onSubmit,
 }: {
-  firstName: string;
-  setFirstName: (v: string) => void;
-  lastName: string;
-  setLastName: (v: string) => void;
   userPhone: string;
   setUserPhone: (v: string) => void;
   busy: boolean;
@@ -496,22 +453,15 @@ function DetailsStage({
   const [attempted, setAttempted] = useState(false);
   const trimmedPhone = userPhone.trim();
   const phoneOk = useMemo(() => /^\+[1-9]\d{6,14}$/.test(trimmedPhone), [trimmedPhone]);
-  const nameOk = firstName.trim().length > 0 && lastName.trim().length > 0;
-  const isValid = phoneOk && nameOk;
-  const isEmpty = trimmedPhone.length === 0 || !nameOk;
 
   const handleSubmit = () => {
-    if (!isValid) {
+    if (!phoneOk) {
       setAttempted(true);
       setShaking(true);
       setTimeout(() => setShaking(false), 420);
-      if (!nameOk) {
-        toast.error("Add your name", { description: "Both first and last name are required." });
-      } else {
-        toast.error("That doesn't look like a phone number", {
-          description: "Use E.164 format, e.g. +14155550123.",
-        });
-      }
+      toast.error("That doesn't look like a phone number", {
+        description: "Use E.164 format, e.g. +14155550123.",
+      });
       return;
     }
     onSubmit();
@@ -525,9 +475,9 @@ function DetailsStage({
 
   return (
     <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Your details</h1>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Your phone</h1>
       <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-        Spectrum needs this to assign you a shared iMessage number you can text.
+        Spectrum will assign you a shared iMessage number you can text from this phone.
       </p>
       <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
         <form
@@ -538,38 +488,6 @@ function DetailsStage({
           }}
           noValidate
         >
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              className="input-glass text-[15px]"
-              type="text"
-              placeholder="First name"
-              autoComplete="given-name"
-              spellCheck={false}
-              value={firstName}
-              onChange={(e) => {
-                setFirstName(e.target.value);
-                if (attempted) setAttempted(false);
-              }}
-              disabled={busy}
-              aria-label="First name"
-              required
-            />
-            <input
-              className="input-glass text-[15px]"
-              type="text"
-              placeholder="Last name"
-              autoComplete="family-name"
-              spellCheck={false}
-              value={lastName}
-              onChange={(e) => {
-                setLastName(e.target.value);
-                if (attempted) setAttempted(false);
-              }}
-              disabled={busy}
-              aria-label="Last name"
-              required
-            />
-          </div>
           <div className="relative">
             <input
               className="input-glass font-mono text-center text-[15px] tracking-[0.02em] pr-10"
@@ -600,7 +518,7 @@ function DetailsStage({
           <button
             type="submit"
             className="btn-pill-primary inline-flex w-full items-center justify-center"
-            disabled={busy || isEmpty}
+            disabled={busy || trimmedPhone.length === 0}
           >
             {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
             Continue

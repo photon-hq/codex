@@ -44,16 +44,51 @@ interface PreparedInput {
   unsupportedAttachments: number;
 }
 
+export interface TenantHealth {
+  tenantId: string;
+  phoneNumber: string;
+  spectrumProjectId: string;
+  subscribed: boolean;
+  subscribedAt: number | null;
+  lastErrorAt: number | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  messagesHandled: number;
+  lastMessageAt: number | null;
+}
+
 export class TenantWorker {
   private app: SpectrumApp | null = null;
   private running = false;
   private stopRequested = false;
   private backoffMs = MIN_BACKOFF_MS;
+  private subscribed = false;
+  private subscribedAt: number | null = null;
+  private lastError: string | null = null;
+  private lastErrorAt: number | null = null;
+  private consecutiveFailures = 0;
+  private messagesHandled = 0;
+  private lastMessageAt: number | null = null;
 
   constructor(private tenant: Tenant) {}
 
   get id() {
     return this.tenant.id;
+  }
+
+  health(): TenantHealth {
+    return {
+      tenantId: this.tenant.id,
+      phoneNumber: this.tenant.phoneNumber,
+      spectrumProjectId: this.tenant.spectrumProjectId,
+      subscribed: this.subscribed,
+      subscribedAt: this.subscribedAt,
+      lastError: this.lastError,
+      lastErrorAt: this.lastErrorAt,
+      consecutiveFailures: this.consecutiveFailures,
+      messagesHandled: this.messagesHandled,
+      lastMessageAt: this.lastMessageAt,
+    };
   }
 
   async start() {
@@ -85,7 +120,14 @@ export class TenantWorker {
         this.backoffMs = MIN_BACKOFF_MS;
       } catch (err) {
         if (this.stopRequested) return;
-        console.error(`[tenant ${this.tenant.id}] subscription error:`, err);
+        this.subscribed = false;
+        this.lastError = err instanceof Error ? err.message : String(err);
+        this.lastErrorAt = Date.now();
+        this.consecutiveFailures += 1;
+        console.error(
+          `[tenant ${this.tenant.id}] subscription error (#${this.consecutiveFailures}):`,
+          err,
+        );
         await this.logEvent("error", "subscribe", { error: serializeError(err) });
         await sleep(this.backoffMs);
         this.backoffMs = Math.min(this.backoffMs * 2, MAX_BACKOFF_MS);
@@ -106,20 +148,31 @@ export class TenantWorker {
       providers: [imessage.config()],
     });
     this.app = app;
-    console.log(`[tenant ${this.tenant.id}] subscribed (${this.tenant.phoneNumber})`);
+    this.subscribed = true;
+    this.subscribedAt = Date.now();
+    this.lastError = null;
+    this.consecutiveFailures = 0;
+    console.log(
+      `[tenant ${this.tenant.id}] subscribed (${this.tenant.phoneNumber}) project=${this.tenant.spectrumProjectId}`,
+    );
+    await this.logEvent("status", "subscribed", { phoneNumber: this.tenant.phoneNumber });
 
     try {
       for await (const [space, message] of app.messages) {
         if (this.stopRequested) break;
+        this.messagesHandled += 1;
+        this.lastMessageAt = Date.now();
         await this.handle(space, message).catch((err) => {
           console.error(`[tenant ${this.tenant.id}] handler error:`, err);
         });
       }
     } finally {
+      this.subscribed = false;
       try {
         await app.stop();
       } catch {}
       if (this.app === app) this.app = null;
+      console.warn(`[tenant ${this.tenant.id}] message stream ended — will reconnect`);
     }
   }
 
