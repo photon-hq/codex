@@ -723,9 +723,10 @@ function composeReply(
         : `(${unsupportedAttachments} attachments were skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)`,
     );
   }
-  const body = parts.length === 0
-    ? "Codex returned an empty reply. Try again or send /new."
-    : parts.join("\n\n");
+  const body =
+    parts.length === 0
+      ? "Codex returned an empty reply. Try again or send /new."
+      : parts.join("\n\n");
   return { text: body, prUrl };
 }
 
