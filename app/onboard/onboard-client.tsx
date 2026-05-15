@@ -15,7 +15,14 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Stage = "codex" | "codex-device" | "spectrum-device" | "phone" | "provision" | "done";
+type Stage =
+  | "codex"
+  | "codex-device"
+  | "codex-success"
+  | "spectrum-device"
+  | "phone"
+  | "provision"
+  | "done";
 
 interface CodexDeviceState {
   user_code: string;
@@ -41,6 +48,7 @@ interface TenantState {
 const STEP_INDEX: Record<Stage, number> = {
   codex: 0,
   "codex-device": 0,
+  "codex-success": 0,
   "spectrum-device": 1,
   phone: 2,
   provision: 2,
@@ -60,6 +68,7 @@ export default function OnboardClient() {
   const [spectrumDevice, setSpectrumDevice] = useState<SpectrumDeviceState | null>(null);
   const [tenant, setTenant] = useState<TenantState | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showDeviceAuthHint, setShowDeviceAuthHint] = useState(false);
 
   useEffect(() => {
     void fetch("/api/tenant/me")
@@ -120,7 +129,7 @@ export default function OnboardClient() {
         switch (data.status) {
           case "ok":
             if (data.user) setCodexUser({ email: data.user.email, name: data.user.name });
-            void beginSpectrum();
+            setStage("codex-success");
             return;
           case "pending":
             pollTimer = setTimeout(poll, interval);
@@ -135,10 +144,15 @@ export default function OnboardClient() {
             });
             setStage("codex");
             return;
-          default:
+          default: {
+            const reason = String(data.reason ?? "").toLowerCase();
+            if (reason.includes("authorization") || reason.includes("denied")) {
+              setShowDeviceAuthHint(true);
+            }
             toast.error("ChatGPT login failed", { description: data.reason ?? undefined });
             setStage("codex");
             return;
+          }
         }
       } catch (err) {
         if (cancelled) return;
@@ -155,6 +169,15 @@ export default function OnboardClient() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, codexDevice]);
+
+  useEffect(() => {
+    if (stage !== "codex-success") return;
+    const t = setTimeout(() => {
+      void beginSpectrum();
+    }, 900);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
 
   const beginSpectrum = useCallback(async () => {
     setBusy(true);
@@ -276,7 +299,15 @@ export default function OnboardClient() {
   if (!bootstrapped) {
     return (
       <div className="flex w-full max-w-[480px] flex-col items-center text-center">
-        <div className="body-small text-[var(--color-text-muted)]">Loading&hellip;</div>
+        <div className="skeleton-chip" aria-hidden />
+        <div className="mt-6 flex items-center gap-1.5" aria-hidden>
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className="skeleton-dot" />
+          ))}
+        </div>
+        <div className="skeleton-line mt-5 w-[60%]" aria-hidden />
+        <div className="skeleton-line mt-3 w-[80%]" aria-hidden />
+        <div className="sr-only">Loading</div>
       </div>
     );
   }
@@ -301,6 +332,7 @@ export default function OnboardClient() {
           userPhone={userPhone}
           setUserPhone={setUserPhone}
           onPhoneSubmit={() => setStage("provision")}
+          showDeviceAuthHint={showDeviceAuthHint}
         />
       </div>
     </div>
@@ -312,6 +344,19 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "codex":
     case "codex-device":
       return <ChatGPTChip />;
+    case "codex-success":
+      return (
+        <div className="relative">
+          <ChatGPTChip />
+          <span
+            className="check-pop absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-white shadow-[0_4px_14px_-4px_rgba(16,163,127,0.7)]"
+            style={{ background: "var(--color-success)" }}
+            aria-hidden
+          >
+            <Check size={13} strokeWidth={3} />
+          </span>
+        </div>
+      );
     case "spectrum-device":
     case "phone":
       return <SpectrumChip />;
@@ -355,6 +400,7 @@ interface StageContentProps {
   userPhone: string;
   setUserPhone: (v: string) => void;
   onPhoneSubmit: () => void;
+  showDeviceAuthHint: boolean;
 }
 
 function StageContent({
@@ -368,10 +414,20 @@ function StageContent({
   userPhone,
   setUserPhone,
   onPhoneSubmit,
+  showDeviceAuthHint,
 }: StageContentProps) {
   switch (stage) {
     case "codex":
-      return <CodexLandingStage busy={busy} onSubmit={beginCodex} />;
+      return (
+        <CodexLandingStage
+          busy={busy}
+          onSubmit={beginCodex}
+          showDeviceAuthHint={showDeviceAuthHint}
+        />
+      );
+
+    case "codex-success":
+      return <CodexSuccessStage email={codexUser?.email ?? null} />;
 
     case "codex-device":
       return (
@@ -530,13 +586,43 @@ function PhoneStage({
   );
 }
 
-function CodexLandingStage({ busy, onSubmit }: { busy: boolean; onSubmit: () => void }) {
+function CodexSuccessStage({ email }: { email: string | null }) {
   return (
     <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Sign in with ChatGPT</h1>
+      <h1 className="section-title fade-up fade-up-4 mt-4">ChatGPT connected</h1>
       <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-        Codex on iMessage uses your ChatGPT subscription. Replies sync to chatgpt.com/codex so you
-        can pick up any thread on the web.
+        {email ? (
+          <>
+            Signed in as <span className="font-mono text-[var(--color-text)]">{email}</span>.
+            Reserving your iMessage line&hellip;
+          </>
+        ) : (
+          <>Reserving your iMessage line&hellip;</>
+        )}
+      </p>
+      <div className="fade-up fade-up-6 mt-7 flex items-center gap-2.5 text-[var(--color-text-muted)]">
+        <Loader2 size={14} className="animate-spin" />
+        <span className="body-small">One sec</span>
+      </div>
+    </>
+  );
+}
+
+function CodexLandingStage({
+  busy,
+  onSubmit,
+  showDeviceAuthHint,
+}: {
+  busy: boolean;
+  onSubmit: () => void;
+  showDeviceAuthHint: boolean;
+}) {
+  return (
+    <>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Connect ChatGPT</h1>
+      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
+        Use your ChatGPT subscription &mdash; no API key. iMessage threads sync to
+        chatgpt.com/codex.
       </p>
       <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
         <button
@@ -549,25 +635,25 @@ function CodexLandingStage({ busy, onSubmit }: { busy: boolean; onSubmit: () => 
           Continue with ChatGPT
           {!busy && <ArrowRight size={14} className="ml-1.5" />}
         </button>
-        <p className="mt-3 text-[12px] text-[var(--color-text-dim)]">
-          You&rsquo;ll get a one-time code to enter at{" "}
-          <span className="font-mono">auth.openai.com/codex/device</span>.
-        </p>
-        <div className="mt-4 rounded-[10px] border border-white/30 bg-white/30 px-3 py-2.5 text-left">
-          <p className="text-[12px] leading-snug text-[var(--color-text-muted)]">
-            <span className="font-medium text-[var(--color-text)]">First time signing in?</span>{" "}
-            Turn on{" "}
-            <a
-              href="https://chatgpt.com/#settings/Security"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2 hover:text-[var(--color-text)]"
-            >
-              Device code authorization for Codex
-            </a>{" "}
-            in your ChatGPT Security settings, then come back here.
-          </p>
-        </div>
+        {showDeviceAuthHint && (
+          <div className="fade-up mt-4 rounded-[10px] border border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] px-3 py-2.5 text-left">
+            <p className="text-[12px] leading-snug text-[var(--color-text-muted)]">
+              <span className="font-medium text-[var(--color-text)]">
+                Authorization Error from OpenAI?
+              </span>{" "}
+              Turn on{" "}
+              <a
+                href="https://chatgpt.com/#settings/Security"
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2 hover:text-[var(--color-text)]"
+              >
+                Device code authorization for Codex
+              </a>{" "}
+              in ChatGPT Security settings, then try again.
+            </p>
+          </div>
+        )}
       </div>
     </>
   );
@@ -619,15 +705,18 @@ function DeviceCardLayout({
   const secondHalf = userCode.slice(half);
 
   return (
-    <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center">
+    <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center px-1">
       <a
         href={openUrl}
         target="_blank"
         rel="noreferrer"
-        className="btn-pill-primary inline-flex items-center gap-1.5"
+        className="btn-pill-primary inline-flex max-w-full items-center gap-1.5"
       >
-        Continue on {verificationHost}
-        <ExternalLink size={13} />
+        <span className="truncate">
+          Continue on <span className="hidden xs:inline">{verificationHost}</span>
+          <span className="xs:hidden">OpenAI</span>
+        </span>
+        <ExternalLink size={13} className="flex-shrink-0" />
       </a>
       <div className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
         <Loader2 size={12} className="animate-spin" />
@@ -641,7 +730,7 @@ function DeviceCardLayout({
         <button
           type="button"
           onClick={copy}
-          className="group relative mt-2 rounded-lg font-mono text-[clamp(22px,2.6vw,28px)] font-medium leading-none tabular-nums text-[var(--color-text)] outline-none transition-opacity hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.2)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          className="group relative mt-2 rounded-lg font-mono text-[clamp(20px,5.2vw,28px)] font-medium leading-none tabular-nums text-[var(--color-text)] outline-none transition-opacity hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.2)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
           style={{ letterSpacing: "0.18em" }}
           aria-label="Copy verification code"
         >
@@ -652,7 +741,7 @@ function DeviceCardLayout({
           </span>
           <span
             aria-hidden
-            className={`pointer-events-none absolute -right-7 top-1/2 -translate-y-1/2 transition-opacity ${
+            className={`pointer-events-none absolute -right-6 top-1/2 -translate-y-1/2 transition-opacity ${
               copied
                 ? "opacity-100 text-[var(--color-success)]"
                 : "opacity-0 text-[var(--color-text-muted)] group-hover:opacity-100"

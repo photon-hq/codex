@@ -10,7 +10,6 @@ import {
   LogOut,
   MessageSquare,
   RotateCcw,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -115,7 +114,23 @@ export default function DashboardClient() {
   }, [router]);
 
   if (loading) {
-    return <div className="body-small text-[var(--color-text-muted)]">Loading…</div>;
+    return (
+      <main className="relative flex flex-1 flex-col">
+        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-4 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10">
+          <div className="flex w-full max-w-[520px] flex-col items-center text-center">
+            <div className="skeleton-chip" aria-hidden />
+            <div className="skeleton-line mt-6 w-[40%]" aria-hidden />
+            <div className="skeleton-line mt-3 w-[70%] h-7" aria-hidden />
+            <div className="skeleton-line mt-7 w-[50%]" aria-hidden />
+            <div className="mt-12 grid w-full grid-cols-2 gap-3">
+              <div className="skeleton-card" aria-hidden />
+              <div className="skeleton-card" aria-hidden />
+            </div>
+            <div className="sr-only">Loading dashboard</div>
+          </div>
+        </div>
+      </main>
+    );
   }
   if (!me?.tenant) return null;
 
@@ -138,7 +153,7 @@ export default function DashboardClient() {
         }
       />
       <main className="relative flex flex-1 flex-col">
-        <div className="flex w-full flex-1 flex-col items-center px-5 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10">
+        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-4 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10">
           <div className="flex w-full max-w-[520px] flex-col items-center text-center">
             <div className="fade-up fade-up-2">
               <CodexIcon size="clamp(56px, 6.5vw, 68px)" radius="18px" />
@@ -152,19 +167,11 @@ export default function DashboardClient() {
             <CopyableNumber number={t.phoneNumber} />
 
             <div className="fade-up fade-up-6 mt-7 flex flex-col items-center gap-2">
-              {t.redirectUri && (
-                <a
-                  href={t.redirectUri}
-                  className="btn-pill-primary inline-flex items-center gap-1.5"
-                >
-                  <MessageSquare size={14} /> Open in iMessage
-                </a>
-              )}
               <a
-                href={`sms:${t.phoneNumber}`}
-                className="text-[12.5px] tracking-[-0.005em] text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
+                href={t.redirectUri ?? `sms:${t.phoneNumber}`}
+                className="btn-pill-primary inline-flex items-center gap-1.5"
               >
-                or open as sms://
+                <MessageSquare size={14} /> Open in iMessage
               </a>
             </div>
 
@@ -206,40 +213,38 @@ export default function DashboardClient() {
               </ul>
             </details>
 
-            <details
-              open
-              className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5"
-            >
-              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
-                <span className="inline-flex items-center gap-2">
-                  <Sparkles size={14} /> ChatGPT account
-                </span>
-                <ChevronDown
-                  size={14}
-                  className="text-[var(--color-text-muted)] transition-transform duration-200 group-open:rotate-180"
-                />
-              </summary>
-              <p className="mt-3 body-small text-[var(--color-text-dim)]">
-                Signed in as{" "}
-                <span className="font-mono text-[var(--color-text)]">
-                  {t.codexUserEmail ?? "your ChatGPT account"}
-                </span>
-                . Tokens are stored AES-256-GCM encrypted and refreshed automatically.
-              </p>
-              {!t.codexEnvironmentId && (
-                <p className="mt-3 body-small text-[var(--color-warning,var(--color-text-dim))]">
-                  No Codex Cloud environment connected. Codex needs at least one GitHub repo —{" "}
+            {!t.codexEnvironmentId && (
+              <div className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-[color-mix(in_srgb,var(--color-warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] p-4 text-left">
+                <p className="text-[13px] leading-snug text-[var(--color-text-muted)]">
+                  <span className="font-medium text-[var(--color-text)]">Connect a repo.</span>{" "}
+                  Codex needs at least one GitHub repo &mdash;{" "}
                   <a
                     href="https://chatgpt.com/codex/settings/environments"
                     target="_blank"
                     rel="noreferrer"
                     className="underline underline-offset-2"
                   >
-                    add one in chatgpt.com/codex
+                    add one
                   </a>{" "}
                   before texting.
                 </p>
-              )}
+              </div>
+            )}
+
+            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
+                <span className="truncate">
+                  <span className="text-[var(--color-text-muted)]">ChatGPT</span>{" "}
+                  <span className="font-mono">{t.codexUserEmail ?? "linked"}</span>
+                </span>
+                <ChevronDown
+                  size={14}
+                  className="ml-2 flex-shrink-0 text-[var(--color-text-muted)] transition-transform duration-200 group-open:rotate-180"
+                />
+              </summary>
+              <p className="mt-3 body-small text-[var(--color-text-dim)]">
+                Tokens are stored AES-256-GCM encrypted and refreshed automatically.
+              </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <a
                   href={codexUrl}
@@ -255,7 +260,7 @@ export default function DashboardClient() {
                   disabled={reLinking}
                   className="btn-pill-secondary inline-flex items-center gap-1.5"
                 >
-                  <RotateCcw size={13} /> {reLinking ? "Starting…" : "Re-link ChatGPT"}
+                  <RotateCcw size={13} /> {reLinking ? "Starting…" : "Re-link"}
                 </button>
               </div>
             </details>

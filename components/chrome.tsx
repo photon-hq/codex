@@ -17,7 +17,7 @@ export function PageShell({
   return (
     <main className="relative flex flex-1 flex-col">
       <div
-        className={`flex w-full flex-1 flex-col items-center px-5 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10 ${contentClassName ?? ""}`}
+        className={`safe-bottom flex w-full flex-1 flex-col items-center px-4 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10 ${contentClassName ?? ""}`}
       >
         {children}
       </div>
@@ -44,9 +44,9 @@ export function BackdropVideo() {
 
 export function TopNav({ left, right }: { left?: ReactNode; right?: ReactNode }) {
   return (
-    <header className="fade-up relative z-10 flex w-full items-center justify-between px-5 py-4 sm:px-8 sm:py-5 md:px-10 lg:px-12">
-      {left ?? <BrandLink />}
-      {right ?? <GitHubPill />}
+    <header className="fade-up safe-top relative z-10 flex w-full items-center justify-between gap-2 px-4 py-3 sm:px-8 sm:py-5 md:px-10 lg:px-12">
+      <div className="min-w-0 flex-shrink">{left ?? <BrandLink />}</div>
+      <div className="flex-shrink-0">{right ?? <GitHubPill />}</div>
     </header>
   );
 }
