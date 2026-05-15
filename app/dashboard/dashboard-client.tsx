@@ -205,23 +205,7 @@ export default function DashboardClient() {
               </div>
             )}
 
-            <dl className="fade-up fade-up-7 mt-12 grid w-full grid-cols-2 gap-y-5 border-t border-[var(--color-border)] pt-8 text-left">
-              <Row label="Model" value={t.codexModel} mono />
-              <Row label="Active since" value={new Date(t.createdAt).toLocaleDateString()} />
-              <Row
-                label="ChatGPT"
-                value={t.codexUserEmail ?? "linked"}
-                truncate
-                mono={!!t.codexUserEmail}
-              />
-              <Row
-                label="Repo"
-                value={t.codexEnvironmentId ? "Connected" : "Not connected"}
-                muted={!t.codexEnvironmentId}
-              />
-            </dl>
-
-            <div className="fade-up fade-up-7 mt-8 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-3 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
+            <div className="fade-up fade-up-7 mt-12 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-3 border-t border-[var(--color-border)] pt-8 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
               <button
                 type="button"
                 onClick={reLinkCodex}
@@ -303,29 +287,5 @@ function CopyableNumber({ number }: { number: string }) {
         {copied ? <Check size={14} className="text-[var(--color-success)]" /> : <Copy size={14} />}
       </span>
     </button>
-  );
-}
-
-function Row({
-  label,
-  value,
-  mono,
-  truncate,
-  muted,
-}: { label: string; value: string; mono?: boolean; truncate?: boolean; muted?: boolean }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-dim)]">
-        {label}
-      </dt>
-      <dd
-        className={`${mono ? "font-mono" : ""} ${
-          muted ? "text-[var(--color-text-muted)]" : "text-[var(--color-text)]"
-        } ${truncate ? "truncate" : ""} text-[13.5px] tracking-[-0.005em]`}
-        title={truncate ? value : undefined}
-      >
-        {value}
-      </dd>
-    </div>
   );
 }
