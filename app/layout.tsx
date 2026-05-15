@@ -1,4 +1,5 @@
 import { BackdropVideo } from "@/components/chrome";
+import { Footer } from "@/components/footer";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
@@ -70,7 +71,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="hero-bg relative min-h-dvh overflow-x-hidden">
         <BackdropVideo />
-        <div className="relative z-10 flex min-h-dvh flex-col">{children}</div>
+        <div className="relative z-10 flex min-h-dvh flex-col">
+          {children}
+          <Footer />
+        </div>
         <Toaster
           position="top-center"
           richColors
