@@ -1,7 +1,6 @@
 "use client";
 
 import { ChatGPTChip, CodexIcon, SpectrumChip } from "@/components/chrome";
-import { isOpenAIKeyShape } from "@/lib/openai-key";
 import {
   AlertCircle,
   ArrowRight,
@@ -16,9 +15,17 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Stage = "key" | "device" | "details" | "provision" | "done";
+type Stage = "codex" | "codex-device" | "spectrum-device" | "details" | "provision" | "done";
 
-interface DeviceState {
+interface CodexDeviceState {
+  user_code: string;
+  verification_url: string;
+  verification_uri_complete: string | null;
+  interval: number;
+  expires_at: string;
+}
+
+interface SpectrumDeviceState {
   user_code: string;
   verification_uri: string;
   verification_uri_complete: string | null;
@@ -38,8 +45,9 @@ interface SessionUser {
 }
 
 const STEP_INDEX: Record<Stage, number> = {
-  key: 0,
-  device: 1,
+  codex: 0,
+  "codex-device": 0,
+  "spectrum-device": 1,
   details: 2,
   provision: 2,
   done: 3,
@@ -48,13 +56,16 @@ const TOTAL_STEPS = 4;
 
 export default function OnboardClient() {
   const router = useRouter();
-  const [stage, setStage] = useState<Stage>("key");
-  const [apiKey, setApiKey] = useState("");
+  const [stage, setStage] = useState<Stage>("codex");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [userPhone, setUserPhone] = useState("");
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
-  const [device, setDevice] = useState<DeviceState | null>(null);
+  const [, setSessionUser] = useState<SessionUser | null>(null);
+  const [codexDevice, setCodexDevice] = useState<CodexDeviceState | null>(null);
+  const [codexUser, setCodexUser] = useState<{ email: string | null; name: string | null } | null>(
+    null,
+  );
+  const [spectrumDevice, setSpectrumDevice] = useState<SpectrumDeviceState | null>(null);
   const [tenant, setTenant] = useState<TenantState | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -63,7 +74,7 @@ export default function OnboardClient() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!data) return;
-        if (data.provisioned && data.tenant.hasOpenAIKey) {
+        if (data.provisioned && data.tenant.codexLinked) {
           router.replace("/dashboard");
           return;
         }
@@ -78,42 +89,85 @@ export default function OnboardClient() {
       .catch(() => {});
   }, [router]);
 
-  const beginSpectrum = useCallback(async () => {
-    const key = apiKey.trim();
-    if (!isOpenAIKeyShape(key)) {
-      toast.error("That doesn't look like an OpenAI key", {
-        description: "Keys start with sk- and are at least 40 characters.",
-      });
-      return;
-    }
+  const beginCodex = useCallback(async () => {
     setBusy(true);
     try {
-      const verifyRes = await fetch("/api/openai-key/verify", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ apiKey: key }),
-      });
-      if (!verifyRes.ok) {
-        const body = (await verifyRes.json().catch(() => ({}))) as {
-          error?: string;
-          reason?: string;
-        };
-        const titleByReason: Record<string, string> = {
-          unauthorized: "Key rejected",
-          forbidden: "Key lacks permissions",
-          rate_limited: "Rate limited — try again",
-          network_error: "Couldn't reach OpenAI",
-        };
-        const title = (body.reason && titleByReason[body.reason]) ?? "Couldn't verify key";
-        toast.error(title, { description: body.error ?? "OpenAI key verification failed." });
-        return;
+      const res = await fetch("/api/codex/device/start", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `device start failed (${res.status})`);
       }
+      const data = (await res.json()) as CodexDeviceState;
+      setCodexDevice(data);
+      setStage("codex-device");
+    } catch (err) {
+      toast.error("Couldn't reach OpenAI", {
+        description: err instanceof Error ? err.message : "device start failed",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
+  useEffect(() => {
+    if (stage !== "codex-device" || !codexDevice) return;
+    let cancelled = false;
+    let interval = codexDevice.interval * 1000;
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch("/api/codex/device/poll", { method: "POST" });
+        const data = await res.json();
+        if (cancelled) return;
+        switch (data.status) {
+          case "ok":
+            if (data.user) setCodexUser({ email: data.user.email, name: data.user.name });
+            void beginSpectrum();
+            return;
+          case "pending":
+            pollTimer = setTimeout(poll, interval);
+            return;
+          case "slow_down":
+            interval += 5000;
+            pollTimer = setTimeout(poll, interval);
+            return;
+          case "expired":
+            toast.error("Verification code expired", {
+              description: "Restart the flow to get a fresh code.",
+            });
+            setStage("codex");
+            return;
+          default:
+            toast.error("ChatGPT login failed", { description: data.reason ?? undefined });
+            setStage("codex");
+            return;
+        }
+      } catch (err) {
+        if (cancelled) return;
+        toast.error("Couldn't reach OpenAI", {
+          description: err instanceof Error ? err.message : "polling failed",
+        });
+      }
+    };
+
+    pollTimer = setTimeout(poll, interval);
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, codexDevice]);
+
+  const beginSpectrum = useCallback(async () => {
+    setBusy(true);
+    try {
       const res = await fetch("/api/oauth/device/start", { method: "POST" });
       if (!res.ok) throw new Error((await res.json()).error ?? "device flow start failed");
-      const data = (await res.json()) as DeviceState;
-      setDevice(data);
-      setStage("device");
+      const data = (await res.json()) as SpectrumDeviceState;
+      setSpectrumDevice(data);
+      setStage("spectrum-device");
     } catch (err) {
       toast.error("Couldn't start authorization", {
         description: err instanceof Error ? err.message : "device flow start failed",
@@ -121,12 +175,12 @@ export default function OnboardClient() {
     } finally {
       setBusy(false);
     }
-  }, [apiKey]);
+  }, []);
 
   useEffect(() => {
-    if (stage !== "device" || !device) return;
+    if (stage !== "spectrum-device" || !spectrumDevice) return;
     let cancelled = false;
-    let interval = device.interval * 1000;
+    let interval = spectrumDevice.interval * 1000;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
@@ -154,17 +208,17 @@ export default function OnboardClient() {
             return;
           case "denied":
             toast.error("Access denied", { description: "Try authorizing Spectrum again." });
-            setStage("key");
+            setStage("codex");
             return;
           case "expired":
             toast.error("Verification code expired", {
               description: "Restart the flow to get a fresh code.",
             });
-            setStage("key");
+            setStage("codex");
             return;
           default:
             toast.error("Device flow failed", { description: data.reason ?? undefined });
-            setStage("key");
+            setStage("codex");
             return;
         }
       } catch (err) {
@@ -180,7 +234,7 @@ export default function OnboardClient() {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [stage, device]);
+  }, [stage, spectrumDevice]);
 
   useEffect(() => {
     if (stage !== "provision") return;
@@ -194,7 +248,6 @@ export default function OnboardClient() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        openaiKey: apiKey.trim(),
         userPhone: userPhone.trim(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -205,11 +258,9 @@ export default function OnboardClient() {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           const reason = body.reason as string | undefined;
-          if (reason === "phone_conflict") {
-            setStage("details");
-          } else {
-            setStage("key");
-          }
+          if (reason === "phone_conflict") setStage("details");
+          else if (reason === "codex_required") setStage("codex");
+          else setStage("codex");
           throw new Error(body.error ?? `provision failed (${res.status})`);
         }
         const data = await res.json();
@@ -232,7 +283,7 @@ export default function OnboardClient() {
     return () => {
       cancelled = true;
     };
-  }, [stage, apiKey, userPhone, firstName, lastName]);
+  }, [stage, userPhone, firstName, lastName]);
 
   const activeIdx = STEP_INDEX[stage];
 
@@ -248,10 +299,10 @@ export default function OnboardClient() {
         <StageContent
           stage={stage}
           busy={busy}
-          apiKey={apiKey}
-          setApiKey={setApiKey}
-          beginSpectrum={beginSpectrum}
-          device={device}
+          beginCodex={beginCodex}
+          codexDevice={codexDevice}
+          codexUser={codexUser}
+          spectrumDevice={spectrumDevice}
           tenant={tenant}
           firstName={firstName}
           setFirstName={setFirstName}
@@ -268,9 +319,10 @@ export default function OnboardClient() {
 
 function StageIcon({ stage }: { stage: Stage }) {
   switch (stage) {
-    case "key":
+    case "codex":
+    case "codex-device":
       return <ChatGPTChip />;
-    case "device":
+    case "spectrum-device":
     case "details":
       return <SpectrumChip />;
     case "provision":
@@ -305,10 +357,10 @@ function ProgressDots({ count, active }: { count: number; active: number }) {
 interface StageContentProps {
   stage: Stage;
   busy: boolean;
-  apiKey: string;
-  setApiKey: (v: string) => void;
-  beginSpectrum: () => void;
-  device: DeviceState | null;
+  beginCodex: () => void;
+  codexDevice: CodexDeviceState | null;
+  codexUser: { email: string | null; name: string | null } | null;
+  spectrumDevice: SpectrumDeviceState | null;
   tenant: TenantState | null;
   firstName: string;
   setFirstName: (v: string) => void;
@@ -322,10 +374,10 @@ interface StageContentProps {
 function StageContent({
   stage,
   busy,
-  apiKey,
-  setApiKey,
-  beginSpectrum,
-  device,
+  beginCodex,
+  codexDevice,
+  codexUser,
+  spectrumDevice,
   tenant,
   firstName,
   setFirstName,
@@ -336,19 +388,31 @@ function StageContent({
   onDetailsSubmit,
 }: StageContentProps) {
   switch (stage) {
-    case "key":
+    case "codex":
+      return <CodexLandingStage busy={busy} onSubmit={beginCodex} />;
+
+    case "codex-device":
       return (
-        <KeyStage apiKey={apiKey} setApiKey={setApiKey} busy={busy} onSubmit={beginSpectrum} />
+        <>
+          <h1 className="section-title fade-up fade-up-4 mt-4">Sign in with ChatGPT</h1>
+          <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
+            Open the link, then enter the code. We use your ChatGPT subscription — no API key
+            needed.
+          </p>
+          {codexDevice && <CodexDeviceCard device={codexDevice} />}
+        </>
       );
 
-    case "device":
+    case "spectrum-device":
       return (
         <>
           <h1 className="section-title fade-up fade-up-4 mt-4">Connect Spectrum</h1>
           <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-            Authorize Spectrum to provision your hosted iMessage line.
+            {codexUser?.email
+              ? `Signed in as ${codexUser.email}. Now authorize Spectrum to provision your hosted iMessage line.`
+              : "Authorize Spectrum to provision your hosted iMessage line."}
           </p>
-          {device && <DeviceCard device={device} />}
+          {spectrumDevice && <SpectrumDeviceCard device={spectrumDevice} />}
         </>
       );
 
@@ -385,7 +449,8 @@ function StageContent({
         <>
           <h1 className="section-title fade-up fade-up-4 mt-4">You&rsquo;re live</h1>
           <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-            Text the number below from any iPhone — Codex picks up instantly.
+            Text the number below from any iPhone — Codex picks up instantly and replies sync to
+            chatgpt.com/codex.
           </p>
           {tenant && (
             <DonePanel phoneNumber={tenant.phoneNumber} redirectUri={tenant.redirectUri} />
@@ -534,131 +599,78 @@ function DetailsStage({
   );
 }
 
-function KeyStage({
-  apiKey,
-  setApiKey,
-  busy,
-  onSubmit,
-}: {
-  apiKey: string;
-  setApiKey: (v: string) => void;
-  busy: boolean;
-  onSubmit: () => void;
-}) {
-  const [shaking, setShaking] = useState(false);
-  const [attempted, setAttempted] = useState(false);
-  const trimmed = apiKey.trim();
-  const isValid = useMemo(() => isOpenAIKeyShape(trimmed), [trimmed]);
-  const isEmpty = trimmed.length === 0;
-
-  const state: "valid" | "invalid" | "neutral" = isValid
-    ? "valid"
-    : attempted && !isEmpty
-      ? "invalid"
-      : "neutral";
-
-  const handleSubmit = () => {
-    if (!isValid) {
-      setAttempted(true);
-      setShaking(true);
-      setTimeout(() => setShaking(false), 420);
-      toast.error("That doesn't look like an OpenAI key", {
-        description: "Keys start with sk- and are at least 40 characters.",
-      });
-      return;
-    }
-    onSubmit();
-  };
-
+function CodexLandingStage({ busy, onSubmit }: { busy: boolean; onSubmit: () => void }) {
   return (
     <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Connect ChatGPT</h1>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Sign in with ChatGPT</h1>
       <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-        Paste your OpenAI key — encrypted on arrival, used to run Codex for every iMessage.
+        Codex on iMessage uses your ChatGPT subscription. Replies sync to chatgpt.com/codex so you
+        can pick up any thread on the web.
       </p>
       <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
-        <form
-          className={`flex w-full flex-col gap-3 ${shaking ? "shake" : ""}`}
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmit();
-          }}
-          noValidate
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={busy}
+          className="btn-pill-primary inline-flex w-full items-center justify-center"
         >
-          <div className="relative">
-            <input
-              className="input-glass font-mono text-center text-[15px] tracking-[0.02em] pr-10"
-              type="password"
-              inputMode="text"
-              placeholder="sk-..."
-              autoComplete="off"
-              spellCheck={false}
-              value={apiKey}
-              onChange={(e) => {
-                setApiKey(e.target.value);
-                if (attempted) setAttempted(false);
-              }}
-              disabled={busy}
-              aria-label="OpenAI API key"
-              aria-invalid={state === "invalid" || undefined}
-              data-state={state === "neutral" ? undefined : state}
-              minLength={40}
-              maxLength={400}
-              pattern="^sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}$"
-              required
-            />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-              {state === "valid" ? (
-                <Check size={16} className="text-[var(--color-success)]" />
-              ) : state === "invalid" ? (
-                <AlertCircle size={16} className="text-[var(--color-danger)]" />
-              ) : null}
-            </span>
-          </div>
-          <button
-            type="submit"
-            className="btn-pill-primary inline-flex w-full items-center justify-center"
-            disabled={busy || isEmpty}
-          >
-            {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
-            Continue
-            {!busy && <ArrowRight size={14} className="ml-1.5" />}
-          </button>
-          <p className="mt-1 text-[12px] text-[var(--color-text-dim)]">
-            Don&rsquo;t have one?{" "}
-            <a
-              href="https://platform.openai.com/api-keys"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2 hover:text-[var(--color-text)]"
-            >
-              Create a key on platform.openai.com
-            </a>
-            .
-          </p>
-        </form>
+          {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+          Continue with ChatGPT
+          {!busy && <ArrowRight size={14} className="ml-1.5" />}
+        </button>
+        <p className="mt-3 text-[12px] text-[var(--color-text-dim)]">
+          You&rsquo;ll get a one-time code to enter at{" "}
+          <span className="font-mono">auth.openai.com/codex/device</span>.
+        </p>
       </div>
     </>
   );
 }
 
-function DeviceCard({ device }: { device: DeviceState }) {
+function CodexDeviceCard({ device }: { device: CodexDeviceState }) {
+  const openUrl = device.verification_uri_complete ?? device.verification_url;
+  return (
+    <DeviceCardLayout
+      openUrl={openUrl}
+      verificationHost={new URL(device.verification_url).host}
+      userCode={device.user_code}
+    />
+  );
+}
+
+function SpectrumDeviceCard({ device }: { device: SpectrumDeviceState }) {
+  const openUrl = device.verification_uri_complete ?? device.verification_uri;
+  return (
+    <DeviceCardLayout
+      openUrl={openUrl}
+      verificationHost={new URL(device.verification_uri).host}
+      userCode={device.user_code}
+    />
+  );
+}
+
+function DeviceCardLayout({
+  openUrl,
+  verificationHost,
+  userCode,
+}: {
+  openUrl: string;
+  verificationHost: string;
+  userCode: string;
+}) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(device.user_code);
+      await navigator.clipboard.writeText(userCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       toast.error("Couldn't copy", { description: "Clipboard access was denied." });
     }
   };
-  const openUrl = device.verification_uri_complete ?? device.verification_uri;
-  const half = Math.ceil(device.user_code.length / 2);
-  const firstHalf = device.user_code.slice(0, half);
-  const secondHalf = device.user_code.slice(half);
-
-  const host = new URL(device.verification_uri).hostname;
+  const half = Math.ceil(userCode.length / 2);
+  const firstHalf = userCode.slice(0, half);
+  const secondHalf = userCode.slice(half);
 
   return (
     <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center">
@@ -668,7 +680,7 @@ function DeviceCard({ device }: { device: DeviceState }) {
         rel="noreferrer"
         className="btn-pill-primary inline-flex items-center gap-1.5"
       >
-        Continue on {host}
+        Continue on {verificationHost}
         <ExternalLink size={13} />
       </a>
       <div className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">

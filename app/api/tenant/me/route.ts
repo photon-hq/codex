@@ -23,7 +23,11 @@ export async function GET() {
       spectrumEmail: tenants.spectrumEmail,
       spectrumUserName: tenants.spectrumUserName,
       phoneNumber: tenants.phoneNumber,
-      hasOpenAIKey: tenants.openaiKeyCiphertext,
+      codexUserEmail: tenants.codexUserEmail,
+      codexAccountId: tenants.codexAccountId,
+      codexEnvironmentId: tenants.codexEnvironmentId,
+      codexEnvironmentBranch: tenants.codexEnvironmentBranch,
+      codexLinked: tenants.codexRefreshCiphertext,
       codexModel: tenants.codexModel,
       status: tenants.status,
       createdAt: tenants.createdAt,
@@ -40,7 +44,7 @@ export async function GET() {
     tenant: {
       ...row,
       redirectUri: imessageRedirectUrl(row.phoneNumber),
-      hasOpenAIKey: !!row.hasOpenAIKey,
+      codexLinked: !!row.codexLinked,
     },
   });
 }

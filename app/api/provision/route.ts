@@ -1,7 +1,7 @@
 import { getDb } from "@/db/client";
 import { tenants } from "@/db/schema";
+import { ensureFreshAccessToken, pickDefaultEnvironment } from "@/lib/codex-cloud";
 import { encrypt } from "@/lib/crypto";
-import { isOpenAIKeyShape, verifyOpenAIKey } from "@/lib/openai-key";
 import {
   SpectrumError,
   checkPhoneAvailability,
@@ -26,6 +26,15 @@ export const dynamic = "force-dynamic";
 
 const PHONE_RE = /^\+[1-9]\d{6,14}$/;
 
+interface PendingTokens {
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  account_id?: string | null;
+  email?: string | null;
+  name?: string | null;
+}
+
 export async function POST(req: Request) {
   const jar = await cookies();
   const bearer = jar.get("bearer")?.value;
@@ -33,14 +42,33 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "not authenticated" }, { status: 401 });
   }
 
-  let openaiKey: string | null = null;
+  const pendingRaw = jar.get("codex_pending_tokens")?.value;
+  if (!pendingRaw) {
+    return NextResponse.json(
+      {
+        error: "Sign in with ChatGPT before provisioning your iMessage line.",
+        reason: "codex_required",
+      },
+      { status: 400 },
+    );
+  }
+
+  let pending: PendingTokens;
+  try {
+    pending = JSON.parse(pendingRaw) as PendingTokens;
+  } catch {
+    return NextResponse.json(
+      { error: "Codex login is corrupted. Sign in again.", reason: "codex_required" },
+      { status: 400 },
+    );
+  }
+
   let userPhone: string | null = null;
   let firstName: string | null = null;
   let lastName: string | null = null;
 
   try {
     const body = (await req.json().catch(() => ({}))) as {
-      openaiKey?: unknown;
       userPhone?: unknown;
       firstName?: unknown;
       lastName?: unknown;
@@ -53,27 +81,6 @@ export async function POST(req: Request) {
     }
     if (typeof body.lastName === "string" && body.lastName.trim().length > 0) {
       lastName = body.lastName.trim();
-    }
-    if (typeof body.openaiKey === "string" && body.openaiKey.trim().length > 0) {
-      const candidate = body.openaiKey.trim();
-      if (!isOpenAIKeyShape(candidate)) {
-        return NextResponse.json(
-          {
-            error:
-              "That doesn't look like an OpenAI API key. It should start with sk- and be at least 40 characters.",
-            reason: "bad_shape",
-          },
-          { status: 400 },
-        );
-      }
-      const verdict = await verifyOpenAIKey(candidate);
-      if (!verdict.ok) {
-        return NextResponse.json(
-          { error: verdict.message, reason: verdict.reason },
-          { status: verdict.reason === "network_error" ? 502 : 400 },
-        );
-      }
-      openaiKey = candidate;
     }
   } catch {}
 
@@ -91,6 +98,29 @@ export async function POST(req: Request) {
       { error: "First and last name are required.", reason: "name_required" },
       { status: 422 },
     );
+  }
+
+  let freshTokens: Awaited<ReturnType<typeof ensureFreshAccessToken>>;
+  try {
+    freshTokens = await ensureFreshAccessToken({
+      access_token: pending.access_token,
+      refresh_token: pending.refresh_token,
+      expires_at: pending.expires_at,
+    });
+  } catch (err) {
+    console.warn("[provision] codex token refresh failed:", err);
+    return NextResponse.json(
+      { error: "Codex login expired. Sign in again.", reason: "codex_required" },
+      { status: 401 },
+    );
+  }
+
+  let codexEnvironmentId: string | null = null;
+  try {
+    const env = await pickDefaultEnvironment(freshTokens.access_token);
+    codexEnvironmentId = env?.id ?? null;
+  } catch (err) {
+    console.warn("[provision] could not list codex envs (continuing):", err);
   }
 
   try {
@@ -130,12 +160,32 @@ export async function POST(req: Request) {
       }
 
       if (stillExists || listProjectsErrored) {
+        const refreshBlob = encrypt(freshTokens.refresh_token);
+        const accessBlob = encrypt(freshTokens.access_token);
+        await db
+          .update(tenants)
+          .set({
+            codexRefreshCiphertext: refreshBlob.ciphertext,
+            codexRefreshIv: refreshBlob.iv,
+            codexRefreshTag: refreshBlob.tag,
+            codexAccessCiphertext: accessBlob.ciphertext,
+            codexAccessIv: accessBlob.iv,
+            codexAccessTag: accessBlob.tag,
+            codexAccessExpiresAt: new Date(freshTokens.expires_at),
+            codexAccountId: pending.account_id ?? null,
+            codexUserEmail: pending.email ?? null,
+            codexEnvironmentId: codexEnvironmentId ?? t.codexEnvironmentId,
+            updatedAt: new Date(),
+          })
+          .where(eq(tenants.id, t.id));
+        jar.delete("codex_pending_tokens");
         return NextResponse.json({
           status: "existing",
           tenantId: t.id,
           phoneNumber: t.phoneNumber,
           redirectUri: imessageRedirectUrl(t.phoneNumber),
-          hasOpenAIKey: !!t.openaiKeyCiphertext,
+          codexLinked: true,
+          codexEnvironmentId: codexEnvironmentId ?? t.codexEnvironmentId,
         });
       }
 
@@ -245,7 +295,8 @@ export async function POST(req: Request) {
     }
 
     const projectSecretBlob = encrypt(projectSecret);
-    const openaiBlob = openaiKey ? encrypt(openaiKey) : null;
+    const refreshBlob = encrypt(freshTokens.refresh_token);
+    const accessBlob = encrypt(freshTokens.access_token);
 
     const [row] = await db
       .insert(tenants)
@@ -259,19 +310,29 @@ export async function POST(req: Request) {
         spectrumProjectSecretTag: projectSecretBlob.tag,
         spectrumLineId: spectrumUserRecordId ?? `${cloudProjectId}:imessage`,
         phoneNumber: assigned,
-        openaiKeyCiphertext: openaiBlob?.ciphertext ?? null,
-        openaiKeyIv: openaiBlob?.iv ?? null,
-        openaiKeyTag: openaiBlob?.tag ?? null,
+        codexRefreshCiphertext: refreshBlob.ciphertext,
+        codexRefreshIv: refreshBlob.iv,
+        codexRefreshTag: refreshBlob.tag,
+        codexAccessCiphertext: accessBlob.ciphertext,
+        codexAccessIv: accessBlob.iv,
+        codexAccessTag: accessBlob.tag,
+        codexAccessExpiresAt: new Date(freshTokens.expires_at),
+        codexAccountId: pending.account_id ?? null,
+        codexUserEmail: pending.email ?? null,
+        codexEnvironmentId,
         codexModel: process.env.CODEX_MODEL ?? "gpt-5-codex",
       })
       .returning();
+
+    jar.delete("codex_pending_tokens");
 
     return NextResponse.json({
       status: "created",
       tenantId: row.id,
       phoneNumber: row.phoneNumber,
       redirectUri: imessageRedirectUrl(row.phoneNumber),
-      hasOpenAIKey: !!openaiBlob,
+      codexLinked: true,
+      codexEnvironmentId,
     });
   } catch (err) {
     console.error("[provision] failed", err);

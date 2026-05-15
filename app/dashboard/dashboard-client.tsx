@@ -1,18 +1,18 @@
 "use client";
 
 import { BackHomePill, CodexIcon, TopNav } from "@/components/chrome";
-import { isOpenAIKeyShape } from "@/lib/openai-key";
 import {
-  AlertCircle,
   Check,
   ChevronDown,
   Copy,
-  KeyRound,
+  ExternalLink,
   LogOut,
   MessageSquare,
+  RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 interface Me {
@@ -21,7 +21,10 @@ interface Me {
   tenant?: {
     phoneNumber: string;
     redirectUri: string | null;
-    hasOpenAIKey: boolean;
+    codexLinked: boolean;
+    codexUserEmail: string | null;
+    codexEnvironmentId: string | null;
+    codexEnvironmentBranch: string;
     codexModel: string;
     status: string;
     createdAt: string;
@@ -32,8 +35,7 @@ export default function DashboardClient() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
-  const [newKey, setNewKey] = useState("");
-  const [rotating, setRotating] = useState(false);
+  const [reLinking, setReLinking] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -44,7 +46,7 @@ export default function DashboardClient() {
         return;
       }
       const data = (await res.json()) as Me;
-      if (!data.provisioned || !data.tenant?.hasOpenAIKey) {
+      if (!data.provisioned || !data.tenant?.codexLinked) {
         router.replace("/onboard");
         return;
       }
@@ -62,26 +64,25 @@ export default function DashboardClient() {
     void refresh();
   }, [refresh]);
 
-  const rotateKey = useCallback(async () => {
-    if (!isOpenAIKeyShape(newKey.trim())) return;
-    setRotating(true);
+  const reLinkCodex = useCallback(async () => {
+    setReLinking(true);
     try {
-      const res = await fetch("/api/tenant/key", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ apiKey: newKey.trim() }),
+      const res = await fetch("/api/codex/device/start", { method: "POST" });
+      if (!res.ok) throw new Error((await res.json()).error ?? "device start failed");
+      const data = await res.json();
+      const url = data.verification_uri_complete ?? data.verification_url;
+      window.open(url, "_blank", "noopener");
+      toast.success("Open the OpenAI tab", {
+        description: `Enter code ${data.user_code} to relink, then return here.`,
       });
-      if (!res.ok) throw new Error((await res.json()).error ?? "rotation failed");
-      setNewKey("");
-      await refresh();
     } catch (err) {
-      toast.error("Couldn't replace key", {
-        description: err instanceof Error ? err.message : "rotation failed",
+      toast.error("Couldn't start ChatGPT relink", {
+        description: err instanceof Error ? err.message : "device start failed",
       });
     } finally {
-      setRotating(false);
+      setReLinking(false);
     }
-  }, [newKey, refresh]);
+  }, []);
 
   const logout = useCallback(async () => {
     await fetch("/api/oauth/logout", { method: "POST" });
@@ -92,6 +93,9 @@ export default function DashboardClient() {
     return <div className="body-small text-[var(--color-text-muted)]">Loading…</div>;
   }
   if (!me?.tenant) return null;
+
+  const t = me.tenant;
+  const codexUrl = "https://chatgpt.com/codex";
 
   return (
     <>
@@ -120,19 +124,19 @@ export default function DashboardClient() {
             </div>
 
             <span className="eyebrow fade-up fade-up-4 mt-5">Your Codex iMessage number</span>
-            <CopyableNumber number={me.tenant.phoneNumber} />
+            <CopyableNumber number={t.phoneNumber} />
 
             <div className="fade-up fade-up-6 mt-7 flex flex-col items-center gap-2">
-              {me.tenant.redirectUri && (
+              {t.redirectUri && (
                 <a
-                  href={me.tenant.redirectUri}
+                  href={t.redirectUri}
                   className="btn-pill-primary inline-flex items-center gap-1.5"
                 >
                   <MessageSquare size={14} /> Open in iMessage
                 </a>
               )}
               <a
-                href={`sms:${me.tenant.phoneNumber}`}
+                href={`sms:${t.phoneNumber}`}
                 className="text-[12.5px] tracking-[-0.005em] text-[var(--color-text-dim)] hover:text-[var(--color-text-muted)]"
               >
                 or open as sms://
@@ -140,11 +144,8 @@ export default function DashboardClient() {
             </div>
 
             <div className="fade-up fade-up-7 mt-12 grid w-full grid-cols-2 gap-3">
-              <InfoTile label="Model" value={me.tenant.codexModel} mono />
-              <InfoTile
-                label="Active since"
-                value={new Date(me.tenant.createdAt).toLocaleDateString()}
-              />
+              <InfoTile label="Model" value={t.codexModel} mono />
+              <InfoTile label="Active since" value={new Date(t.createdAt).toLocaleDateString()} />
             </div>
 
             <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
@@ -158,23 +159,35 @@ export default function DashboardClient() {
               <ul className="mt-3 flex flex-col gap-2 body-small">
                 <li>
                   <span className="text-[var(--color-text)]">Text the number above.</span> Codex
-                  replies in the same thread.
+                  replies in the same iMessage thread and the conversation appears at{" "}
+                  <a
+                    href={codexUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    chatgpt.com/codex
+                  </a>
+                  .
                 </li>
                 <li>
-                  Send <span className="kbd">/new</span> to start a fresh conversation. Previous
-                  turns are forgotten.
+                  Send <span className="kbd">/new</span> to start a fresh task. Previous turns are
+                  forgotten in iMessage; the old task stays archived on the web.
                 </li>
                 <li>
-                  Text only for now. Voice notes, attachments, and reactions get a polite &ldquo;not
-                  yet&rdquo;.
+                  Photos work — attach an image in iMessage and Codex sees it. PNG/JPEG/GIF/WEBP
+                  under 20 MB.
                 </li>
               </ul>
             </details>
 
-            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
+            <details
+              open
+              className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5"
+            >
               <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
                 <span className="inline-flex items-center gap-2">
-                  <KeyRound size={14} /> OpenAI key
+                  <Sparkles size={14} /> ChatGPT account
                 </span>
                 <ChevronDown
                   size={14}
@@ -182,104 +195,49 @@ export default function DashboardClient() {
                 />
               </summary>
               <p className="mt-3 body-small text-[var(--color-text-dim)]">
-                Stored AES-256-GCM encrypted. Revoking on platform.openai.com takes effect instantly
-                — the bot will error until you rotate.
+                Signed in as{" "}
+                <span className="font-mono text-[var(--color-text)]">
+                  {t.codexUserEmail ?? "your ChatGPT account"}
+                </span>
+                . Tokens are stored AES-256-GCM encrypted and refreshed automatically.
               </p>
-              <RotateKeyForm
-                newKey={newKey}
-                setNewKey={setNewKey}
-                rotating={rotating}
-                onSubmit={rotateKey}
-              />
+              {!t.codexEnvironmentId && (
+                <p className="mt-3 body-small text-[var(--color-warning,var(--color-text-dim))]">
+                  No Codex Cloud environment connected. Codex needs at least one GitHub repo —{" "}
+                  <a
+                    href="https://chatgpt.com/codex/settings/environments"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    add one in chatgpt.com/codex
+                  </a>{" "}
+                  before texting.
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <a
+                  href={codexUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-pill-secondary inline-flex items-center gap-1.5"
+                >
+                  <ExternalLink size={13} /> Open chatgpt.com/codex
+                </a>
+                <button
+                  type="button"
+                  onClick={reLinkCodex}
+                  disabled={reLinking}
+                  className="btn-pill-secondary inline-flex items-center gap-1.5"
+                >
+                  <RotateCcw size={13} /> {reLinking ? "Starting…" : "Re-link ChatGPT"}
+                </button>
+              </div>
             </details>
           </div>
         </div>
       </main>
     </>
-  );
-}
-
-function RotateKeyForm({
-  newKey,
-  setNewKey,
-  rotating,
-  onSubmit,
-}: {
-  newKey: string;
-  setNewKey: (v: string) => void;
-  rotating: boolean;
-  onSubmit: () => void;
-}) {
-  const [attempted, setAttempted] = useState(false);
-  const trimmed = newKey.trim();
-  const isValid = useMemo(() => isOpenAIKeyShape(trimmed), [trimmed]);
-  const isEmpty = trimmed.length === 0;
-  const state: "valid" | "invalid" | "neutral" = isValid
-    ? "valid"
-    : attempted && !isEmpty
-      ? "invalid"
-      : "neutral";
-
-  const handleSubmit = () => {
-    if (!isValid) {
-      setAttempted(true);
-      toast.error("That doesn't look like an OpenAI key", {
-        description: "Keys start with sk- and are at least 40 characters.",
-      });
-      return;
-    }
-    onSubmit();
-  };
-
-  return (
-    <div className="mt-3 flex flex-col gap-2">
-      <div className="relative">
-        <input
-          type="password"
-          inputMode="text"
-          className="input-glass font-mono pr-10"
-          placeholder="sk-..."
-          autoComplete="off"
-          spellCheck={false}
-          value={newKey}
-          onChange={(e) => {
-            setNewKey(e.target.value);
-            if (attempted) setAttempted(false);
-          }}
-          aria-label="New OpenAI API key"
-          aria-invalid={state === "invalid" || undefined}
-          data-state={state === "neutral" ? undefined : state}
-          minLength={40}
-          maxLength={400}
-          pattern="^sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}$"
-        />
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-          {state === "valid" ? (
-            <Check size={16} className="text-[var(--color-success)]" />
-          ) : state === "invalid" ? (
-            <AlertCircle size={16} className="text-[var(--color-danger)]" />
-          ) : null}
-        </span>
-      </div>
-      <div className="mt-1 flex gap-2">
-        <button
-          type="button"
-          className="btn-pill-primary inline-flex items-center"
-          disabled={rotating || isEmpty}
-          onClick={handleSubmit}
-        >
-          Replace key
-        </button>
-        <button
-          type="button"
-          className="btn-pill-secondary inline-flex items-center"
-          onClick={() => setNewKey("")}
-          disabled={rotating || isEmpty}
-        >
-          Clear
-        </button>
-      </div>
-    </div>
   );
 }
 
