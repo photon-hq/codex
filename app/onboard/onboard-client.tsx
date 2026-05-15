@@ -56,6 +56,7 @@ const TOTAL_STEPS = 4;
 
 export default function OnboardClient() {
   const router = useRouter();
+  const [bootstrapped, setBootstrapped] = useState(false);
   const [stage, setStage] = useState<Stage>("codex");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -73,7 +74,10 @@ export default function OnboardClient() {
     void fetch("/api/tenant/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!data) return;
+        if (!data) {
+          setBootstrapped(true);
+          return;
+        }
         if (data.provisioned && data.tenant.codexLinked) {
           router.replace("/dashboard");
           return;
@@ -83,11 +87,20 @@ export default function OnboardClient() {
             phoneNumber: data.tenant.phoneNumber,
             redirectUri: data.tenant.redirectUri ?? null,
           });
-          setStage("done");
+          setStage("codex");
         }
+        setBootstrapped(true);
       })
-      .catch(() => {});
+      .catch(() => setBootstrapped(true));
   }, [router]);
+
+  if (!bootstrapped) {
+    return (
+      <div className="flex w-full max-w-[480px] flex-col items-center text-center">
+        <div className="body-small text-[var(--color-text-muted)]">Loading&hellip;</div>
+      </div>
+    );
+  }
 
   const beginCodex = useCallback(async () => {
     setBusy(true);

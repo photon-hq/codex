@@ -1,5 +1,5 @@
 import { CodexIcon, GitHubPill, TopNav } from "@/components/chrome";
-import Link from "next/link";
+import { ConnectCta } from "@/components/connect-cta";
 
 export default function HomePage() {
   return (
@@ -22,9 +22,7 @@ function Hero() {
         iMessage.
       </p>
       <div className="fade-up fade-up-4 mt-7 flex flex-col items-center gap-3 sm:mt-8">
-        <Link href="/onboard" className="btn-pill-primary inline-flex items-center justify-center">
-          Connect to iMessage
-        </Link>
+        <ConnectCta />
         <a
           href="https://github.com/photon-hq/codex"
           target="_blank"

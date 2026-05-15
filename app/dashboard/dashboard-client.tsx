@@ -6,10 +6,12 @@ import {
   ChevronDown,
   Copy,
   ExternalLink,
+  Loader2,
   LogOut,
   MessageSquare,
   RotateCcw,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -36,6 +38,8 @@ export default function DashboardClient() {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const [reLinking, setReLinking] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -87,6 +91,27 @@ export default function DashboardClient() {
   const logout = useCallback(async () => {
     await fetch("/api/oauth/logout", { method: "POST" });
     router.replace("/");
+  }, [router]);
+
+  const disconnect = useCallback(async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/tenant/disconnect", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `disconnect failed (${res.status})`);
+      }
+      toast.success("Account disconnected", {
+        description: "Your iMessage line and ChatGPT link have been removed.",
+      });
+      router.replace("/onboard");
+    } catch (err) {
+      toast.error("Couldn't disconnect", {
+        description: err instanceof Error ? err.message : "disconnect failed",
+      });
+      setDisconnecting(false);
+      setConfirmDisconnect(false);
+    }
   }, [router]);
 
   if (loading) {
@@ -232,6 +257,63 @@ export default function DashboardClient() {
                 >
                   <RotateCcw size={13} /> {reLinking ? "Starting…" : "Re-link ChatGPT"}
                 </button>
+              </div>
+            </details>
+
+            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
+              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text-muted)] [&::-webkit-details-marker]:hidden">
+                <span className="inline-flex items-center gap-2">
+                  <Trash2 size={14} /> Danger zone
+                </span>
+                <ChevronDown
+                  size={14}
+                  className="transition-transform duration-200 group-open:rotate-180"
+                />
+              </summary>
+              <p className="mt-3 body-small text-[var(--color-text-dim)]">
+                Disconnect removes your ChatGPT link, your iMessage thread mappings, and your tenant
+                record from this dashboard. The phone number{" "}
+                <span className="font-mono text-[var(--color-text)]">{t.phoneNumber}</span> stays
+                reserved on your Spectrum project, so re-onboarding gives it back to you.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {!confirmDisconnect ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDisconnect(true)}
+                    className="btn-pill-secondary inline-flex items-center gap-1.5 text-[var(--color-danger,#c14242)]"
+                  >
+                    <Trash2 size={13} /> Disconnect account
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={disconnect}
+                      disabled={disconnecting}
+                      className="btn-pill-primary inline-flex items-center gap-1.5"
+                      style={{
+                        backgroundColor: "var(--color-danger, #c14242)",
+                        borderColor: "var(--color-danger, #c14242)",
+                      }}
+                    >
+                      {disconnecting ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={13} />
+                      )}
+                      {disconnecting ? "Disconnecting…" : "Yes, disconnect"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDisconnect(false)}
+                      disabled={disconnecting}
+                      className="btn-pill-secondary inline-flex items-center"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
               </div>
             </details>
           </div>
