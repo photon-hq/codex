@@ -268,7 +268,6 @@ export async function POST(req: Request) {
         lastName,
         email: ownerEmail,
         phoneNumber: userPhone,
-        sendInvite: false,
       });
       assigned = userResp.user?.assignedPhoneNumber?.trim();
       spectrumUserRecordId = userResp.user?.id;

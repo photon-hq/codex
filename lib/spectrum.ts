@@ -208,7 +208,6 @@ export async function createSpectrumUser(
     lastName: string;
     email: string;
     phoneNumber: string;
-    sendInvite?: boolean;
   },
 ): Promise<SpectrumUserResult> {
   const payload = {
@@ -216,7 +215,6 @@ export async function createSpectrumUser(
     lastName: input.lastName,
     email: input.email,
     phoneNumber: input.phoneNumber,
-    sendInvite: input.sendInvite ?? false,
   };
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
