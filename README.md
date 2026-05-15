@@ -1,7 +1,6 @@
 # Codex on iMessage
 
-Text Codex like you'd text a teammate. Replies come back in the same thread,
-PRs included.
+Text Codex on iMessage.
 
 ## How it works
 
@@ -27,10 +26,7 @@ tapback flips to ❤️ when the task is finished.
 
 ## Privacy
 
-- ChatGPT OAuth tokens are AES-256-GCM encrypted at rest. Plaintext lives in
-  memory only while a request is in flight.
-- Messages flow to OpenAI Codex through your authenticated ChatGPT session —
-  nothing is shared with third parties.
+- ChatGPT OAuth tokens are AES-256-GCM encrypted at rest.
 - Disconnect any time from the dashboard. Codex stops replying immediately
   and the encrypted tokens are wiped.
 
