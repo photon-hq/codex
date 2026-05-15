@@ -94,14 +94,6 @@ export default function OnboardClient() {
       .catch(() => setBootstrapped(true));
   }, [router]);
 
-  if (!bootstrapped) {
-    return (
-      <div className="flex w-full max-w-[480px] flex-col items-center text-center">
-        <div className="body-small text-[var(--color-text-muted)]">Loading&hellip;</div>
-      </div>
-    );
-  }
-
   const beginCodex = useCallback(async () => {
     setBusy(true);
     try {
@@ -299,6 +291,14 @@ export default function OnboardClient() {
   }, [stage, userPhone, firstName, lastName]);
 
   const activeIdx = STEP_INDEX[stage];
+
+  if (!bootstrapped) {
+    return (
+      <div className="flex w-full max-w-[480px] flex-col items-center text-center">
+        <div className="body-small text-[var(--color-text-muted)]">Loading&hellip;</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full max-w-[480px] flex-col items-center text-center">
