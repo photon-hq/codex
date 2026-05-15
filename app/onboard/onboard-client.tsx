@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Loader2,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -759,7 +760,11 @@ function DonePanel({
   phoneNumber: string;
   redirectUri: string | null;
 }) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(phoneNumber);
@@ -769,26 +774,48 @@ function DonePanel({
       toast.error("Couldn't copy", { description: "Clipboard access was denied." });
     }
   };
+
+  const disconnect = async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/tenant/disconnect", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `disconnect failed (${res.status})`);
+      }
+      toast.success("Disconnected", {
+        description: "Your iMessage line and ChatGPT link have been removed.",
+      });
+      router.replace("/onboard");
+    } catch (err) {
+      toast.error("Couldn't disconnect", {
+        description: err instanceof Error ? err.message : "disconnect failed",
+      });
+      setDisconnecting(false);
+      setConfirmDisconnect(false);
+    }
+  };
+
   return (
     <>
       <button
         type="button"
         onClick={copy}
-        className="fade-up fade-up-6 group mt-8 inline-flex items-center gap-2 font-mono text-[clamp(28px,3.6vw,40px)] font-medium tracking-[-0.01em] text-[var(--color-text)]"
+        className="fade-up fade-up-6 group mt-7 inline-flex items-baseline gap-2 font-mono text-[clamp(32px,5.2vw,44px)] font-medium leading-none tracking-[-0.02em] text-[var(--color-text)] outline-none transition-opacity hover:opacity-85"
         aria-label="Copy phone number"
       >
-        {phoneNumber}
+        <span>{phoneNumber}</span>
         <span
-          className={`text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+          className={`self-center text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         >
           {copied ? (
-            <Check size={16} className="text-[var(--color-success)]" />
+            <Check size={14} className="text-[var(--color-success)]" />
           ) : (
-            <Copy size={16} />
+            <Copy size={14} />
           )}
         </span>
       </button>
-      <div className="fade-up fade-up-7 mt-7 flex flex-col items-center gap-3">
+      <div className="fade-up fade-up-7 mt-8 flex flex-col items-center gap-2.5">
         {redirectUri && (
           <a href={redirectUri} className="btn-pill-primary inline-flex items-center gap-1.5">
             <MessageSquare size={14} /> Open in iMessage
@@ -796,10 +823,45 @@ function DonePanel({
         )}
         <Link
           href="/dashboard"
-          className="text-[13px] font-medium tracking-[-0.01em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
         >
           Go to dashboard &rarr;
         </Link>
+      </div>
+      <div className="fade-up fade-up-7 mt-10 flex w-full max-w-[24rem] items-center justify-center gap-x-5 border-t border-[var(--color-border)] pt-6 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
+        {!confirmDisconnect ? (
+          <button
+            type="button"
+            onClick={() => setConfirmDisconnect(true)}
+            className="inline-flex items-center gap-1.5 text-[var(--color-danger)] hover:opacity-80"
+          >
+            <Trash2 size={12} /> Disconnect
+          </button>
+        ) : (
+          <span className="inline-flex items-center gap-x-5">
+            <button
+              type="button"
+              onClick={disconnect}
+              disabled={disconnecting}
+              className="inline-flex items-center gap-1.5 font-semibold text-[var(--color-danger)] hover:opacity-80 disabled:opacity-60"
+            >
+              {disconnecting ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
+              {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDisconnect(false)}
+              disabled={disconnecting}
+              className="hover:text-[var(--color-text)]"
+            >
+              Cancel
+            </button>
+          </span>
+        )}
       </div>
     </>
   );

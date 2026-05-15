@@ -1,3 +1,7 @@
+import { createIMessageLink } from "@photon-ai/uri";
+
+export const IMESSAGE_INTRO_BODY = "Hey! Tell me how to use codex in iMessage";
+
 function dashboardHost() {
   const h = process.env.SPECTRUM_API_HOST;
   if (!h) throw new Error("SPECTRUM_API_HOST is not set");
@@ -455,6 +459,9 @@ export async function listProjectUsers(
   return body?.users ?? [];
 }
 
-export function imessageRedirectUrl(phoneNumber: string): string {
-  return `sms:${phoneNumber}`;
+export function imessageRedirectUrl(
+  phoneNumber: string,
+  body: string = IMESSAGE_INTRO_BODY,
+): string {
+  return createIMessageLink({ to: phoneNumber, body });
 }

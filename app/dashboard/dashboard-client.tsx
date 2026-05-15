@@ -3,7 +3,6 @@
 import { BackHomePill, CodexIcon, TopNav } from "@/components/chrome";
 import {
   Check,
-  ChevronDown,
   Copy,
   ExternalLink,
   Loader2,
@@ -153,71 +152,46 @@ export default function DashboardClient() {
         }
       />
       <main className="relative flex flex-1 flex-col">
-        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-4 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10">
-          <div className="flex w-full max-w-[520px] flex-col items-center text-center">
+        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-5 pb-20 pt-10 sm:px-8 sm:pt-16">
+          <div className="flex w-full max-w-[480px] flex-col items-center text-center">
             <div className="fade-up fade-up-2">
-              <CodexIcon size="clamp(56px, 6.5vw, 68px)" radius="18px" />
+              <CodexIcon size="clamp(52px, 6vw, 60px)" radius="16px" />
             </div>
 
-            <div className="fade-up fade-up-3 mt-5 inline-flex items-center gap-2 rounded-full bg-white/55 px-2.5 py-1 text-[11.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] shadow-[0_1px_0_rgba(255,255,255,0.6)_inset]">
+            <div className="fade-up fade-up-3 mt-6 inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
               <span className="dot dot-ok m-0" /> Active
             </div>
 
-            <span className="eyebrow fade-up fade-up-4 mt-5">Your Codex iMessage number</span>
-            <CopyableNumber number={t.phoneNumber} />
+            <h1 className="fade-up fade-up-4 mt-6 font-mono text-[clamp(32px,5.2vw,44px)] font-medium leading-none tracking-[-0.02em] text-[var(--color-text)]">
+              <CopyableNumber number={t.phoneNumber} />
+            </h1>
 
-            <div className="fade-up fade-up-6 mt-7 flex flex-col items-center gap-2">
+            <p className="fade-up fade-up-5 mt-4 max-w-[28ch] text-[14px] leading-snug text-[var(--color-text-muted)]">
+              Text this number from iMessage. Codex replies in the same thread.
+            </p>
+
+            <div className="fade-up fade-up-6 mt-8 flex w-full flex-col items-center gap-2.5">
               <a
                 href={t.redirectUri ?? `sms:${t.phoneNumber}`}
                 className="btn-pill-primary inline-flex items-center gap-1.5"
               >
                 <MessageSquare size={14} /> Open in iMessage
               </a>
+              <a
+                href={codexUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              >
+                Continue at chatgpt.com/codex ↗
+              </a>
             </div>
-
-            <div className="fade-up fade-up-7 mt-12 grid w-full grid-cols-2 gap-3">
-              <InfoTile label="Model" value={t.codexModel} mono />
-              <InfoTile label="Active since" value={new Date(t.createdAt).toLocaleDateString()} />
-            </div>
-
-            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
-                <span>How it works</span>
-                <ChevronDown
-                  size={14}
-                  className="text-[var(--color-text-muted)] transition-transform duration-200 group-open:rotate-180"
-                />
-              </summary>
-              <ul className="mt-3 flex flex-col gap-2 body-small">
-                <li>
-                  <span className="text-[var(--color-text)]">Text the number above.</span> Codex
-                  replies in the same iMessage thread and the conversation appears at{" "}
-                  <a
-                    href={codexUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-2"
-                  >
-                    chatgpt.com/codex
-                  </a>
-                  .
-                </li>
-                <li>
-                  Send <span className="kbd">/new</span> to start a fresh task. Previous turns are
-                  forgotten in iMessage; the old task stays archived on the web.
-                </li>
-                <li>
-                  Photos work — attach an image in iMessage and Codex sees it. PNG/JPEG/GIF/WEBP
-                  under 20 MB.
-                </li>
-              </ul>
-            </details>
 
             {!t.codexEnvironmentId && (
-              <div className="fade-up fade-up-7 mt-3 w-full rounded-[14px] border border-[color-mix(in_srgb,var(--color-warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] p-4 text-left">
+              <div className="fade-up fade-up-7 mt-10 w-full rounded-[12px] border border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_8%,white)] px-4 py-3 text-left">
                 <p className="text-[13px] leading-snug text-[var(--color-text-muted)]">
                   <span className="font-medium text-[var(--color-text)]">Connect a repo.</span>{" "}
-                  Codex needs at least one GitHub repo &mdash;{" "}
+                  Codex needs a GitHub repo &mdash;{" "}
                   <a
                     href="https://chatgpt.com/codex/settings/environments"
                     target="_blank"
@@ -231,96 +205,73 @@ export default function DashboardClient() {
               </div>
             )}
 
-            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text)] [&::-webkit-details-marker]:hidden">
-                <span className="truncate">
-                  <span className="text-[var(--color-text-muted)]">ChatGPT</span>{" "}
-                  <span className="font-mono">{t.codexUserEmail ?? "linked"}</span>
-                </span>
-                <ChevronDown
-                  size={14}
-                  className="ml-2 flex-shrink-0 text-[var(--color-text-muted)] transition-transform duration-200 group-open:rotate-180"
-                />
-              </summary>
-              <p className="mt-3 body-small text-[var(--color-text-dim)]">
-                Tokens are stored AES-256-GCM encrypted and refreshed automatically.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <a
-                  href={codexUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-pill-secondary inline-flex items-center gap-1.5"
-                >
-                  <ExternalLink size={13} /> Open chatgpt.com/codex
-                </a>
+            <dl className="fade-up fade-up-7 mt-12 grid w-full grid-cols-2 gap-y-5 border-t border-[var(--color-border)] pt-8 text-left">
+              <Row label="Model" value={t.codexModel} mono />
+              <Row label="Active since" value={new Date(t.createdAt).toLocaleDateString()} />
+              <Row
+                label="ChatGPT"
+                value={t.codexUserEmail ?? "linked"}
+                truncate
+                mono={!!t.codexUserEmail}
+              />
+              <Row
+                label="Repo"
+                value={t.codexEnvironmentId ? "Connected" : "Not connected"}
+                muted={!t.codexEnvironmentId}
+              />
+            </dl>
+
+            <div className="fade-up fade-up-7 mt-8 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-3 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
+              <button
+                type="button"
+                onClick={reLinkCodex}
+                disabled={reLinking}
+                className="inline-flex items-center gap-1.5 hover:text-[var(--color-text)] disabled:opacity-60"
+              >
+                <RotateCcw size={12} /> {reLinking ? "Starting…" : "Re-link ChatGPT"}
+              </button>
+              <a
+                href={codexUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 hover:text-[var(--color-text)]"
+              >
+                <ExternalLink size={12} /> Codex on web
+              </a>
+              {!confirmDisconnect ? (
                 <button
                   type="button"
-                  onClick={reLinkCodex}
-                  disabled={reLinking}
-                  className="btn-pill-secondary inline-flex items-center gap-1.5"
+                  onClick={() => setConfirmDisconnect(true)}
+                  className="inline-flex items-center gap-1.5 text-[var(--color-danger)] hover:opacity-80"
                 >
-                  <RotateCcw size={13} /> {reLinking ? "Starting…" : "Re-link"}
+                  <Trash2 size={12} /> Disconnect
                 </button>
-              </div>
-            </details>
-
-            <details className="fade-up fade-up-7 group mt-3 w-full rounded-[14px] border border-white/40 bg-white/40 p-4 text-left backdrop-blur-sm transition-colors duration-200 open:bg-white/60 sm:p-5">
-              <summary className="flex cursor-pointer list-none items-center justify-between text-[14px] font-medium tracking-[-0.01em] text-[var(--color-text-muted)] [&::-webkit-details-marker]:hidden">
+              ) : (
                 <span className="inline-flex items-center gap-2">
-                  <Trash2 size={14} /> Danger zone
-                </span>
-                <ChevronDown
-                  size={14}
-                  className="transition-transform duration-200 group-open:rotate-180"
-                />
-              </summary>
-              <p className="mt-3 body-small text-[var(--color-text-dim)]">
-                Disconnect removes your ChatGPT link, your iMessage thread mappings, and your tenant
-                record from this dashboard. The phone number{" "}
-                <span className="font-mono text-[var(--color-text)]">{t.phoneNumber}</span> stays
-                reserved on your Spectrum project, so re-onboarding gives it back to you.
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {!confirmDisconnect ? (
                   <button
                     type="button"
-                    onClick={() => setConfirmDisconnect(true)}
-                    className="btn-pill-secondary inline-flex items-center gap-1.5 text-[var(--color-danger,#c14242)]"
+                    onClick={disconnect}
+                    disabled={disconnecting}
+                    className="inline-flex items-center gap-1.5 font-semibold text-[var(--color-danger)] hover:opacity-80 disabled:opacity-60"
                   >
-                    <Trash2 size={13} /> Disconnect account
+                    {disconnecting ? (
+                      <Loader2 size={12} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={12} />
+                    )}
+                    {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
                   </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={disconnect}
-                      disabled={disconnecting}
-                      className="btn-pill-primary inline-flex items-center gap-1.5"
-                      style={{
-                        backgroundColor: "var(--color-danger, #c14242)",
-                        borderColor: "var(--color-danger, #c14242)",
-                      }}
-                    >
-                      {disconnecting ? (
-                        <Loader2 size={13} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={13} />
-                      )}
-                      {disconnecting ? "Disconnecting…" : "Yes, disconnect"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDisconnect(false)}
-                      disabled={disconnecting}
-                      className="btn-pill-secondary inline-flex items-center"
-                    >
-                      Cancel
-                    </button>
-                  </>
-                )}
-              </div>
-            </details>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDisconnect(false)}
+                    disabled={disconnecting}
+                    className="hover:text-[var(--color-text)]"
+                  >
+                    Cancel
+                  </button>
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </main>
@@ -342,34 +293,39 @@ function CopyableNumber({ number }: { number: string }) {
           toast.error("Couldn't copy", { description: "Clipboard access was denied." });
         }
       }}
-      className="fade-up fade-up-5 group relative mt-2 inline-flex items-center gap-2 rounded-xl px-3 py-1.5 outline-none transition-colors duration-150 hover:bg-white/45 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.18)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+      className="group inline-flex items-baseline gap-2 outline-none transition-opacity hover:opacity-85 focus-visible:opacity-85"
       aria-label="Copy phone number"
     >
-      <span className="font-mono text-[clamp(28px,3.6vw,40px)] font-medium tracking-[-0.01em] text-[var(--color-text)]">
-        {number}
-      </span>
+      <span>{number}</span>
       <span
-        className={`text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-60 group-hover:opacity-100"}`}
+        className={`self-center text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
       >
-        {copied ? <Check size={16} className="text-[var(--color-success)]" /> : <Copy size={16} />}
+        {copied ? <Check size={14} className="text-[var(--color-success)]" /> : <Copy size={14} />}
       </span>
     </button>
   );
 }
 
-function InfoTile({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({
+  label,
+  value,
+  mono,
+  truncate,
+  muted,
+}: { label: string; value: string; mono?: boolean; truncate?: boolean; muted?: boolean }) {
   return (
-    <div className="rounded-[14px] border border-white/40 bg-white/40 p-3 text-left backdrop-blur sm:p-4">
-      <div className="eyebrow">{label}</div>
-      <div
-        className={`mt-1 ${
-          mono
-            ? "font-mono text-[13px] text-[var(--color-text)]"
-            : "text-[13px] text-[var(--color-text)]"
-        }`}
+    <div className="flex flex-col gap-1">
+      <dt className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-dim)]">
+        {label}
+      </dt>
+      <dd
+        className={`${mono ? "font-mono" : ""} ${
+          muted ? "text-[var(--color-text-muted)]" : "text-[var(--color-text)]"
+        } ${truncate ? "truncate" : ""} text-[13.5px] tracking-[-0.005em]`}
+        title={truncate ? value : undefined}
       >
         {value}
-      </div>
+      </dd>
     </div>
   );
 }
