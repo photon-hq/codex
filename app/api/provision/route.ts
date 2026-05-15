@@ -5,9 +5,9 @@ import { encrypt } from "@/lib/crypto";
 import {
   SpectrumError,
   checkPhoneAvailability,
+  cloudCreateUser,
   cloudTogglePlatform,
   createProject,
-  createSpectrumUser,
   getProject,
   getSession,
   imessageRedirectUrl,
@@ -249,11 +249,11 @@ export async function POST(req: Request) {
     let assigned: string | undefined;
     let spectrumUserRecordId: string | undefined;
     try {
-      const userResp = await createSpectrumUser(bearer, projectId, {
+      const user = await cloudCreateUser(cloudProjectId, projectSecret, {
         phoneNumber: userPhone,
       });
-      assigned = userResp.user?.assignedPhoneNumber?.trim();
-      spectrumUserRecordId = userResp.user?.id;
+      assigned = user.assignedPhoneNumber?.trim();
+      spectrumUserRecordId = user.id;
     } catch (err) {
       if (!(err instanceof SpectrumError) || err.status !== 409 || !reused) throw err;
       console.warn("[provision] create-user conflict on reused project, finding existing user");

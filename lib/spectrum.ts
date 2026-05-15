@@ -184,57 +184,6 @@ export async function checkPhoneAvailability(
   return { available: !!body?.available };
 }
 
-export interface SpectrumUserResult {
-  user?: {
-    id?: string;
-    firstName?: string | null;
-    lastName?: string | null;
-    email?: string | null;
-    phoneNumber?: string | null;
-    assignedPhoneNumber?: string | null;
-    type?: string | null;
-    [key: string]: unknown;
-  };
-  success?: boolean;
-  error?: string;
-  [key: string]: unknown;
-}
-
-export async function createSpectrumUser(
-  bearer: string,
-  projectId: string,
-  input: { phoneNumber: string },
-): Promise<SpectrumUserResult> {
-  const payload = { type: "shared" as const, phoneNumber: input.phoneNumber };
-  const res = await fetch(
-    `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${bearer}`,
-      },
-      body: JSON.stringify(payload),
-    },
-  );
-  if (!res.ok) {
-    const raw = (await asJson(res)) as unknown;
-    throw new SpectrumError(
-      `create-spectrum-user failed: ${res.status} ${res.statusText}`,
-      res.status,
-      raw,
-    );
-  }
-  const body = (await asJson(res)) as SpectrumUserResult | null;
-  if (body?.error) {
-    if (/failed to create user/i.test(body.error)) {
-      throw new SpectrumError(body.error, 409, body);
-    }
-    throw new SpectrumError(body.error, 500, body);
-  }
-  return body ?? {};
-}
-
 export interface CreateProjectInput {
   name: string;
   location?: string;
@@ -463,6 +412,25 @@ export interface CloudProjectUser {
   assignedPhoneNumber?: string | null;
   createdAt?: string;
   [key: string]: unknown;
+}
+
+export async function cloudCreateUser(
+  projectId: string,
+  projectSecret: string,
+  input: { phoneNumber: string },
+): Promise<CloudProjectUser> {
+  return cloudCall<CloudProjectUser>(
+    `/projects/${encodeURIComponent(projectId)}/users/`,
+    {
+      method: "POST",
+      headers: {
+        authorization: basicAuth(projectId, projectSecret),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ type: "shared", phoneNumber: input.phoneNumber }),
+    },
+    "cloud-create-user",
+  );
 }
 
 export async function listProjectUsers(
