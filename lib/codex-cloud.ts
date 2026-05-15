@@ -373,7 +373,7 @@ export async function pickDefaultEnvironment(accessToken: string): Promise<WhamE
   const pinned = envs.find((e) => e.isPinned && e.repos.length > 0);
   if (pinned) return pinned;
   const withRepo = envs.filter((e) => e.repos.length > 0);
-  return withRepo[0] ?? envs[0] ?? null;
+  return withRepo[0] ?? null;
 }
 
 export async function uploadImage(opts: {

@@ -12,10 +12,11 @@ import {
 } from "@/lib/codex-cloud";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { and, eq } from "drizzle-orm";
-import { type Message, type Space, Spectrum } from "spectrum-ts";
+import { type Message, type Space, Spectrum, richlink } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 
 const RESET_REACTION = "👍";
+const CONNECT_ENVIRONMENTS_URL = "https://chatgpt.com/codex/settings/environments";
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
@@ -299,7 +300,14 @@ export class TenantWorker {
       });
     } catch (err) {
       console.error(`[tenant ${this.tenant.id}] codex error:`, err);
-      await m.reply(friendlyError(err));
+      if (err instanceof CodexCloudError && err.status === 412) {
+        await m.reply(
+          "Connect a GitHub repo to Codex before texting — I need an environment to run in.",
+        );
+        await space.send(richlink(CONNECT_ENVIRONMENTS_URL));
+      } else {
+        await m.reply(friendlyError(err));
+      }
       await this.logEvent("error", "codex", {
         error: serializeError(err),
         latencyMs: Date.now() - started,
