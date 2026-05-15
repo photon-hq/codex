@@ -21,7 +21,6 @@ type Stage =
   | "codex-success"
   | "spectrum-device"
   | "phone"
-  | "provision"
   | "done";
 
 interface CodexDeviceState {
@@ -51,7 +50,6 @@ const STEP_INDEX: Record<Stage, number> = {
   "codex-success": 0,
   "spectrum-device": 1,
   phone: 2,
-  provision: 2,
   done: 3,
 };
 const TOTAL_STEPS = 4;
@@ -249,50 +247,42 @@ export default function OnboardClient() {
     };
   }, [stage, spectrumDevice]);
 
-  useEffect(() => {
-    if (stage !== "provision") return;
+  const provision = useCallback(async () => {
     if (!userPhone.trim()) {
       setStage("phone");
       return;
     }
-    let cancelled = false;
     setBusy(true);
-    void fetch("/api/provision", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ userPhone: userPhone.trim() }),
-    })
-      .then(async (res) => {
-        if (cancelled) return;
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          const reason = body.reason as string | undefined;
-          if (reason === "phone_conflict") setStage("phone");
-          else if (reason === "codex_required") setStage("codex");
-          else setStage("codex");
-          throw new Error(body.error ?? `provision failed (${res.status})`);
-        }
-        const data = await res.json();
-        if (cancelled) return;
-        setTenant({
-          phoneNumber: data.phoneNumber,
-          redirectUri: data.redirectUri ?? null,
-        });
-        setStage("done");
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        toast.error("Couldn't provision", {
-          description: err instanceof Error ? err.message : "provision failed",
-        });
-      })
-      .finally(() => {
-        if (!cancelled) setBusy(false);
+    try {
+      const res = await fetch("/api/provision", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userPhone: userPhone.trim() }),
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [stage, userPhone]);
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          reason?: string;
+        };
+        if (body.reason === "phone_conflict") setStage("phone");
+        else if (body.reason === "codex_required") setStage("codex");
+        else setStage("codex");
+        throw new Error(body.error ?? `provision failed (${res.status})`);
+      }
+      const data = await res.json();
+      setTenant({
+        phoneNumber: data.phoneNumber,
+        redirectUri: data.redirectUri ?? null,
+      });
+      setStage("done");
+    } catch (err) {
+      toast.error("Couldn't provision", {
+        description: err instanceof Error ? err.message : "provision failed",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }, [userPhone]);
 
   const activeIdx = STEP_INDEX[stage];
 
@@ -331,7 +321,7 @@ export default function OnboardClient() {
           tenant={tenant}
           userPhone={userPhone}
           setUserPhone={setUserPhone}
-          onPhoneSubmit={() => setStage("provision")}
+          onPhoneSubmit={() => void provision()}
           showDeviceAuthHint={showDeviceAuthHint}
         />
       </div>
@@ -360,7 +350,6 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "spectrum-device":
     case "phone":
       return <SpectrumChip />;
-    case "provision":
     case "done":
       return <CodexIcon size="clamp(56px, 6.5vw, 68px)" radius="18px" />;
   }
@@ -462,20 +451,6 @@ function StageContent({
           busy={busy}
           onSubmit={onPhoneSubmit}
         />
-      );
-
-    case "provision":
-      return (
-        <>
-          <h1 className="section-title fade-up fade-up-4 mt-4">Provisioning</h1>
-          <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-            Spinning up your project, enabling iMessage, and reserving a number.
-          </p>
-          <div className="fade-up fade-up-6 mt-7 flex items-center gap-2.5 text-[var(--color-text-muted)]">
-            <Loader2 size={16} className="animate-spin" />
-            <span className="body-small">Hang tight&hellip;</span>
-          </div>
-        </>
       );
 
     case "done":
