@@ -3,7 +3,7 @@ const DISCORD_URL = "https://discord.gg/3bUP7yWS";
 
 export function Footer() {
   return (
-    <footer className="relative z-10 mt-auto border-t border-white/10 bg-[#1a1a19] px-6 py-5 text-white sm:px-10">
+    <footer className="relative z-10 mt-auto border-t border-white/10 bg-[#1a1a19] px-6 py-2.5 text-white sm:px-10">
       <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between gap-4">
         <a
           href={PHOTON_URL}
@@ -16,9 +16,9 @@ export function Footer() {
           <img
             src="/photon-wordmark.svg"
             alt="photon"
-            width={64}
-            height={14}
-            className="h-[14px] w-auto opacity-80 transition-opacity group-hover:opacity-100"
+            width={56}
+            height={12}
+            className="h-[12px] w-auto opacity-80 transition-opacity group-hover:opacity-100"
           />
         </a>
         <a
@@ -38,8 +38,8 @@ export function Footer() {
 function DiscordIcon() {
   return (
     <svg
-      width="20"
-      height="16"
+      width="16"
+      height="13"
       viewBox="0 0 25.837 20"
       fill="currentColor"
       aria-hidden="true"
