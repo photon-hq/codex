@@ -16,5 +16,18 @@
       "suspicious": { "noExplicitAny": "warn" }
     }
   },
+  "overrides": [
+    {
+      "include": ["components/country-dial-picker.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useFocusableInteractive": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } }
 }

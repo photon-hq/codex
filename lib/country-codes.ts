@@ -132,8 +132,7 @@ export const COUNTRIES: Country[] = [
   { iso: "RW", name: "Rwanda", dial: "250", flag: "🇷🇼" },
 ];
 
-export const DEFAULT_COUNTRY: Country =
-  COUNTRIES.find((c) => c.iso === "US") ?? COUNTRIES[0];
+export const DEFAULT_COUNTRY: Country = COUNTRIES.find((c) => c.iso === "US") ?? COUNTRIES[0];
 
 export function findByIso(iso: string): Country | undefined {
   return COUNTRIES.find((c) => c.iso === iso);

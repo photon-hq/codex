@@ -17,7 +17,7 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLUListElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const listboxId = useId();
 
   const filtered = useMemo(() => {
@@ -30,10 +30,6 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
       if (digits && c.dial.startsWith(digits)) return true;
       return false;
     });
-  }, [query]);
-
-  useEffect(() => {
-    setActiveIdx(0);
   }, [query]);
 
   useEffect(() => {
@@ -67,9 +63,7 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    const el = listRef.current?.querySelector<HTMLLIElement>(
-      `[data-idx="${activeIdx}"]`,
-    );
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`);
     el?.scrollIntoView({ block: "nearest" });
   }, [activeIdx, open]);
 
@@ -134,7 +128,10 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
             <input
               ref={searchRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveIdx(0);
+              }}
               onKeyDown={onSearchKey}
               placeholder="Search country or +code"
               spellCheck={false}
@@ -146,25 +143,27 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
               className="w-full bg-transparent text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] focus:outline-none"
             />
           </div>
-          <ul
+          <div
             ref={listRef}
             id={listboxId}
             role="listbox"
             className="max-h-[280px] overflow-y-auto py-1 text-[13px]"
           >
             {filtered.length === 0 ? (
-              <li className="px-3 py-4 text-center text-[12.5px] text-[var(--color-text-muted)]">
+              <div className="px-3 py-4 text-center text-[12.5px] text-[var(--color-text-muted)]">
                 No match
-              </li>
+              </div>
             ) : (
               filtered.map((c, i) => (
-                <li
+                <button
                   key={c.iso}
+                  type="button"
                   id={`${listboxId}-${c.iso}`}
                   role="option"
                   aria-selected={c.iso === value.iso}
                   data-idx={i}
-                  className={`flex cursor-pointer items-center justify-between gap-2 px-3 py-1.5 transition-colors ${
+                  tabIndex={-1}
+                  className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left transition-colors ${
                     i === activeIdx
                       ? "bg-black/[0.06]"
                       : c.iso === value.iso
@@ -186,10 +185,10 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
                   <span className="font-mono text-[12px] tabular-nums text-[var(--color-text-muted)]">
                     +{c.dial}
                   </span>
-                </li>
+                </button>
               ))
             )}
-          </ul>
+          </div>
         </div>
       )}
     </div>

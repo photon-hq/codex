@@ -17,13 +17,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-type Stage =
-  | "codex"
-  | "codex-device"
-  | "codex-success"
-  | "spectrum-device"
-  | "phone"
-  | "done";
+type Stage = "codex" | "codex-device" | "codex-success" | "spectrum-device" | "phone" | "done";
 
 interface CodexDeviceState {
   user_code: string;
