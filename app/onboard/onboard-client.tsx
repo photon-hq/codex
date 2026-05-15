@@ -2,7 +2,13 @@
 
 import { ChatGPTChip, CodexIcon, SpectrumChip } from "@/components/chrome";
 import { CountryDialPicker } from "@/components/country-dial-picker";
-import { COUNTRIES, type Country, DEFAULT_COUNTRY, bestMatchByDial } from "@/lib/country-codes";
+import { type Country, DEFAULT_COUNTRY, findByIso } from "@/lib/country-codes";
+import {
+  AsYouType,
+  type CountryCode,
+  isValidPhoneNumber,
+  parsePhoneNumberFromString,
+} from "libphonenumber-js";
 import {
   AlertCircle,
   ArrowRight,
@@ -484,13 +490,22 @@ function PhoneStage({
   const [country, setCountry] = useState<Country>(initial.country);
   const [local, setLocal] = useState<string>(initial.local);
 
+  const formatted = useMemo(() => {
+    const digits = local.replace(/\D/g, "");
+    if (!digits) return "";
+    const t = new AsYouType(country.iso as CountryCode);
+    const out = t.input(digits);
+    return out || digits;
+  }, [country, local]);
+
   useEffect(() => {
-    const next = `+${country.dial}${local.replace(/\D/g, "")}`;
+    const digits = local.replace(/\D/g, "");
+    const next = digits ? `+${country.dial}${digits}` : "";
     if (next !== userPhone) setUserPhone(next);
   }, [country, local, setUserPhone, userPhone]);
 
   const e164 = `+${country.dial}${local.replace(/\D/g, "")}`;
-  const phoneOk = /^\+[1-9]\d{6,14}$/.test(e164);
+  const phoneOk = e164.length > 1 ? isValidPhoneNumber(e164, country.iso as CountryCode) : false;
 
   const handleSubmit = () => {
     if (!phoneOk) {
@@ -527,18 +542,24 @@ function PhoneStage({
           noValidate
         >
           <div
-            className="input-glass relative flex items-stretch p-0 pr-10"
+            className="input-glass relative flex h-[52px] items-stretch p-0 pr-10"
             data-state={phoneState === "neutral" ? undefined : phoneState}
           >
             <CountryDialPicker value={country} onChange={setCountry} disabled={busy} />
+            <span
+              aria-hidden
+              className="flex select-none items-center pl-3 pr-1 font-mono text-[15px] tabular-nums text-[var(--color-text-muted)]"
+            >
+              +{country.dial}
+            </span>
             <input
-              className="w-full bg-transparent px-3 text-left font-mono text-[15px] tracking-[0.02em] text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-dim)]"
+              className="w-full bg-transparent pl-1 pr-3 text-left text-[15px] tracking-[0.01em] text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-dim)]"
               type="tel"
               inputMode="tel"
-              placeholder="555 123 4567"
+              placeholder="000 000 0000"
               autoComplete="tel-national"
               spellCheck={false}
-              value={local}
+              value={formatted}
               onChange={(e) => {
                 setLocal(e.target.value.replace(/[^\d\s().-]/g, ""));
                 if (attempted) setAttempted(false);
@@ -573,15 +594,13 @@ function PhoneStage({
 
 function splitE164(value: string): { country: Country; local: string } {
   const trimmed = value.trim();
-  if (!trimmed.startsWith("+")) return { country: DEFAULT_COUNTRY, local: "" };
-  const digits = trimmed.slice(1).replace(/\D/g, "");
-  for (const len of [4, 3, 2, 1]) {
-    if (digits.length <= len) continue;
-    const dial = digits.slice(0, len);
-    const match = COUNTRIES.find((c) => c.dial === dial) ?? bestMatchByDial(dial);
-    if (match) return { country: match, local: digits.slice(len) };
+  if (!trimmed) return { country: DEFAULT_COUNTRY, local: "" };
+  const parsed = parsePhoneNumberFromString(trimmed.startsWith("+") ? trimmed : `+${trimmed}`);
+  if (parsed?.country) {
+    const country = findByIso(parsed.country) ?? DEFAULT_COUNTRY;
+    return { country, local: parsed.nationalNumber.toString() };
   }
-  return { country: DEFAULT_COUNTRY, local: digits };
+  return { country: DEFAULT_COUNTRY, local: "" };
 }
 
 function CodexSuccessStage({ email }: { email: string | null }) {

@@ -1,8 +1,18 @@
 "use client";
 
-import { COUNTRIES, type Country } from "@/lib/country-codes";
-import { ChevronDown, Search } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { COUNTRIES, type Country, findByIso } from "@/lib/country-codes";
+import { useMemo, useState } from "react";
+import {
+  Button,
+  Input,
+  Label,
+  ListBox,
+  ListBoxItem,
+  Popover,
+  Select,
+  SelectValue,
+  TextField,
+} from "react-aria-components";
 
 interface Props {
   value: Country;
@@ -11,14 +21,7 @@ interface Props {
 }
 
 export function CountryDialPicker({ value, onChange, disabled }: Props) {
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [activeIdx, setActiveIdx] = useState(0);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const popoverRef = useRef<HTMLDivElement | null>(null);
-  const searchRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const listboxId = useId();
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -26,171 +29,93 @@ export function CountryDialPicker({ value, onChange, disabled }: Props) {
     const digits = q.replace(/[^\d]/g, "");
     return COUNTRIES.filter((c) => {
       if (c.name.toLowerCase().includes(q)) return true;
-      if (c.iso.toLowerCase().includes(q)) return true;
+      if (c.iso.toLowerCase() === q) return true;
       if (digits && c.dial.startsWith(digits)) return true;
       return false;
     });
   }, [query]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (popoverRef.current?.contains(t) || triggerRef.current?.contains(t)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("mousedown", onDocClick);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDocClick);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (open) {
-      const t = setTimeout(() => searchRef.current?.focus(), 0);
-      return () => clearTimeout(t);
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${activeIdx}"]`);
-    el?.scrollIntoView({ block: "nearest" });
-  }, [activeIdx, open]);
-
-  const select = useCallback(
-    (c: Country) => {
-      onChange(c);
-      setOpen(false);
-      setQuery("");
-      triggerRef.current?.focus();
-    },
-    [onChange],
-  );
-
-  const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (filtered.length === 0) return;
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveIdx((i) => (i + 1) % filtered.length);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveIdx((i) => (i - 1 + filtered.length) % filtered.length);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const pick = filtered[activeIdx];
-      if (pick) select(pick);
-    } else if (e.key === "Home") {
-      e.preventDefault();
-      setActiveIdx(0);
-    } else if (e.key === "End") {
-      e.preventDefault();
-      setActiveIdx(filtered.length - 1);
-    }
-  };
-
   return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listboxId}
-        className="dial-trigger inline-flex h-full items-center gap-1.5 rounded-l-[10px] border-r border-[var(--color-border)] bg-transparent pl-3 pr-2 text-[14px] font-mono tabular-nums text-[var(--color-text)] outline-none transition-colors hover:bg-black/[0.04] focus-visible:bg-black/[0.04] disabled:opacity-50"
+    <Select
+      aria-label="Phone number country code"
+      selectedKey={value.iso}
+      onSelectionChange={(key) => {
+        const next = findByIso(String(key));
+        if (next) onChange(next);
+        setQuery("");
+      }}
+      isDisabled={disabled}
+    >
+      <Button className="country-trigger flex h-full items-center gap-1.5 rounded-l-[10px] border-r border-[var(--color-border)] bg-transparent pl-3 pr-2 text-[14px] text-[var(--color-text)] outline-none transition-colors data-[hovered]:bg-black/[0.04] data-[focused]:bg-black/[0.04] data-[disabled]:opacity-50">
+        <SelectValue<Country>>
+          {({ selectedItem }) => (
+            <span className="flex items-center gap-1.5 whitespace-nowrap">
+              <span className="font-mono tabular-nums">
+                {selectedItem ? `${selectedItem.name} (+${selectedItem.dial})` : "Select country"}
+              </span>
+            </span>
+          )}
+        </SelectValue>
+        <Chevron />
+      </Button>
+      <Popover
+        placement="bottom start"
+        offset={6}
+        className="z-30 w-[min(20rem,90vw)] overflow-hidden rounded-[12px] border border-[var(--color-border)] bg-[var(--color-surface,white)] shadow-[0_18px_40px_-18px_rgba(0,0,0,0.25)] data-[entering]:animate-in data-[entering]:fade-in data-[entering]:zoom-in-95 data-[exiting]:animate-out data-[exiting]:fade-out data-[exiting]:zoom-out-95"
       >
-        <span className="text-[15px] leading-none" aria-hidden>
-          {value.flag}
-        </span>
-        <span>+{value.dial}</span>
-        <ChevronDown size={12} className="text-[var(--color-text-muted)]" aria-hidden />
-      </button>
-
-      {open && (
-        <div
-          ref={popoverRef}
-          className="absolute left-0 top-[calc(100%+6px)] z-30 w-[min(20rem,90vw)] overflow-hidden rounded-[12px] border border-[var(--color-border)] bg-[var(--color-surface,white)] shadow-[0_18px_40px_-18px_rgba(0,0,0,0.25)]"
-          role="dialog"
+        <TextField aria-label="Search country or +code" value={query} onChange={setQuery} autoFocus>
+          <Label className="sr-only">Search</Label>
+          <Input
+            placeholder="Search country or +code"
+            spellCheck={false}
+            className="w-full border-b border-[var(--color-border)] bg-transparent px-3 py-2 text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] focus:outline-none"
+          />
+        </TextField>
+        <ListBox
+          aria-label="Countries"
+          items={filtered}
+          className="max-h-[280px] overflow-y-auto py-1 text-[13px]"
+          renderEmptyState={() => (
+            <div className="px-3 py-4 text-center text-[12.5px] text-[var(--color-text-muted)]">
+              No match
+            </div>
+          )}
         >
-          <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-3 py-2">
-            <Search size={13} className="text-[var(--color-text-muted)]" aria-hidden />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActiveIdx(0);
-              }}
-              onKeyDown={onSearchKey}
-              placeholder="Search country or +code"
-              spellCheck={false}
-              aria-label="Search country or dial code"
-              aria-controls={listboxId}
-              aria-activedescendant={
-                filtered[activeIdx] ? `${listboxId}-${filtered[activeIdx].iso}` : undefined
-              }
-              className="w-full bg-transparent text-[13px] text-[var(--color-text)] placeholder:text-[var(--color-text-dim)] focus:outline-none"
-            />
-          </div>
-          <div
-            ref={listRef}
-            id={listboxId}
-            role="listbox"
-            className="max-h-[280px] overflow-y-auto py-1 text-[13px]"
-          >
-            {filtered.length === 0 ? (
-              <div className="px-3 py-4 text-center text-[12.5px] text-[var(--color-text-muted)]">
-                No match
-              </div>
-            ) : (
-              filtered.map((c, i) => (
-                <button
-                  key={c.iso}
-                  type="button"
-                  id={`${listboxId}-${c.iso}`}
-                  role="option"
-                  aria-selected={c.iso === value.iso}
-                  data-idx={i}
-                  tabIndex={-1}
-                  className={`flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left transition-colors ${
-                    i === activeIdx
-                      ? "bg-black/[0.06]"
-                      : c.iso === value.iso
-                        ? "bg-black/[0.03]"
-                        : ""
-                  }`}
-                  onMouseEnter={() => setActiveIdx(i)}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    select(c);
-                  }}
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span aria-hidden className="text-[14px] leading-none">
-                      {c.flag}
-                    </span>
-                    <span className="truncate text-[var(--color-text)]">{c.name}</span>
-                  </span>
-                  <span className="font-mono text-[12px] tabular-nums text-[var(--color-text-muted)]">
-                    +{c.dial}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+          {(c) => (
+            <ListBoxItem
+              id={c.iso}
+              textValue={`${c.name} +${c.dial}`}
+              className="flex cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left outline-none data-[focused]:bg-black/[0.06] data-[selected]:bg-black/[0.03]"
+            >
+              <span className="truncate text-[var(--color-text)]">{c.name}</span>
+              <span className="font-mono text-[12px] tabular-nums text-[var(--color-text-muted)]">
+                +{c.dial}
+              </span>
+            </ListBoxItem>
+          )}
+        </ListBox>
+      </Popover>
+    </Select>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      className="-mr-0.5 text-[var(--color-text-muted)]"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M5.29289 9.29289C5.68342 8.90237 6.31658 8.90237 6.70711 9.29289L12 14.5858L17.2929 9.29289C17.6834 8.90237 18.3166 8.90237 18.7071 9.29289C19.0976 9.68342 19.0976 10.3166 18.7071 10.7071L12.7071 16.7071C12.5196 16.8946 12.2652 17 12 17C11.7348 17 11.4804 16.8946 11.2929 16.7071L5.29289 10.7071C4.90237 10.3166 4.90237 9.68342 5.29289 9.29289Z"
+        fill="currentColor"
+      />
+    </svg>
   );
 }
