@@ -205,7 +205,7 @@ export async function createSpectrumUser(
   projectId: string,
   input: { phoneNumber: string },
 ): Promise<SpectrumUserResult> {
-  const payload = { phoneNumber: input.phoneNumber };
+  const payload = { type: "shared" as const, phoneNumber: input.phoneNumber };
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/spectrum/users`,
     {

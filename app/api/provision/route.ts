@@ -228,13 +228,22 @@ export async function POST(req: Request) {
       `[provision] dashboard=${projectId} cloud=${details.spectrumProjectId ?? "(missing)"} reused=${reused}`,
     );
 
-    try {
-      await cloudTogglePlatform(cloudProjectId, projectSecret, "imessage", true);
-    } catch (err) {
-      console.warn(
-        "[provision] cloud iMessage toggle failed (non-fatal):",
-        err instanceof Error ? err.message : err,
-      );
+    let toggled = false;
+    for (let attempt = 1; attempt <= 4 && !toggled; attempt += 1) {
+      try {
+        await cloudTogglePlatform(cloudProjectId, projectSecret, "imessage", true);
+        toggled = true;
+      } catch (err) {
+        const is401 = err instanceof SpectrumError && err.status === 401;
+        if (!is401 || attempt === 4) {
+          console.warn(
+            "[provision] cloud iMessage toggle failed (non-fatal):",
+            err instanceof Error ? err.message : err,
+          );
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+      }
     }
 
     let assigned: string | undefined;
