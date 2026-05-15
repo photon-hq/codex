@@ -17,9 +17,8 @@ function Hero() {
         <CodexIcon />
       </div>
       <h1 className="hero-title fade-up fade-up-2 mt-5 max-w-[18ch] sm:mt-6">Codex on iMessage</h1>
-      <p className="hero-tagline fade-up fade-up-3 mt-3 max-w-[42rem] sm:mt-4">
-        A coding agent that helps you build and ship with AI&mdash;powered by ChatGPT, now on
-        iMessage.
+      <p className="hero-tagline fade-up fade-up-3 mt-3 max-w-[42rem] text-balance sm:mt-4">
+        A coding agent that helps you build and ship with AI, powered by ChatGPT, now on iMessage.
       </p>
       <div className="fade-up fade-up-4 mt-7 flex flex-col items-center gap-3 sm:mt-8">
         <ConnectCta />

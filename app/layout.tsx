@@ -23,12 +23,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "Codex on iMessage",
   description:
-    "A coding agent that helps you build and ship with AI — powered by ChatGPT, now on iMessage.",
+    "A coding agent that helps you build and ship with AI, powered by ChatGPT, now on iMessage.",
   openGraph: {
     type: "website",
     title: "Codex on iMessage",
     description:
-      "A coding agent that helps you build and ship with AI — powered by ChatGPT, now on iMessage.",
+      "A coding agent that helps you build and ship with AI, powered by ChatGPT, now on iMessage.",
     url: "/",
     siteName: "Codex on iMessage",
   },
@@ -36,7 +36,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Codex on iMessage",
     description:
-      "A coding agent that helps you build and ship with AI — powered by ChatGPT, now on iMessage.",
+      "A coding agent that helps you build and ship with AI, powered by ChatGPT, now on iMessage.",
   },
 };
 
