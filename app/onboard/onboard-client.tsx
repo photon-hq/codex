@@ -635,6 +635,21 @@ function CodexLandingStage({ busy, onSubmit }: { busy: boolean; onSubmit: () => 
           You&rsquo;ll get a one-time code to enter at{" "}
           <span className="font-mono">auth.openai.com/codex/device</span>.
         </p>
+        <div className="mt-4 rounded-[10px] border border-white/30 bg-white/30 px-3 py-2.5 text-left">
+          <p className="text-[12px] leading-snug text-[var(--color-text-muted)]">
+            <span className="font-medium text-[var(--color-text)]">First time signing in?</span>{" "}
+            Turn on{" "}
+            <a
+              href="https://chatgpt.com/#settings/Security"
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-[var(--color-text)]"
+            >
+              Device code authorization for Codex
+            </a>{" "}
+            in your ChatGPT Security settings, then come back here.
+          </p>
+        </div>
       </div>
     </>
   );
