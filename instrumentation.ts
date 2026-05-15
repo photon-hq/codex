@@ -2,22 +2,13 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   // spectrum-ts reads SPECTRUM_CLOUD_URL as a bare hostname. Derive it from
-  // SPECTRUM_RUNTIME_HOST (or the dashboard host) so a single env var keeps
-  // both REST calls and the SDK pointed at the same cloud.
-  const dash = process.env.SPECTRUM_API_HOST ?? "";
-  const isStaging = /staging-app\.photon\.codes/.test(dash);
-
-  if (!process.env.SPECTRUM_CLOUD_URL) {
-    const runtime = process.env.SPECTRUM_RUNTIME_HOST;
-    if (runtime) {
-      process.env.SPECTRUM_CLOUD_URL = runtime.replace(/^https?:\/\//, "").replace(/\/+$/, "");
-    } else if (isStaging) {
-      process.env.SPECTRUM_CLOUD_URL = "staging-spectrum-cloud.photon.codes";
-    }
-  }
-
-  if (!process.env.SPECTRUM_IMESSAGE_ADDRESS && isStaging) {
-    process.env.SPECTRUM_IMESSAGE_ADDRESS = "staging-spectrum-imessage.photon.codes:443";
+  // SPECTRUM_RUNTIME_HOST when set so a single env var keeps both REST calls
+  // and the SDK pointed at the same cloud.
+  if (!process.env.SPECTRUM_CLOUD_URL && process.env.SPECTRUM_RUNTIME_HOST) {
+    process.env.SPECTRUM_CLOUD_URL = process.env.SPECTRUM_RUNTIME_HOST.replace(
+      /^https?:\/\//,
+      "",
+    ).replace(/\/+$/, "");
   }
 
   if (process.env.BRIDGE_EMBED === "0") return;

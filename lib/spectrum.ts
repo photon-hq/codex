@@ -11,13 +11,8 @@ function dashboardHost() {
 function runtimeHost() {
   const explicit = process.env.SPECTRUM_RUNTIME_HOST;
   if (explicit) return explicit.replace(/\/+$/, "");
-  // Pair with the dashboard host so prod dashboards talk to the prod cloud and
-  // staging dashboards talk to the staging cloud. Both can still be overridden
-  // explicitly with SPECTRUM_RUNTIME_HOST.
-  const dash = process.env.SPECTRUM_API_HOST ?? "";
-  if (/staging-app\.photon\.codes/.test(dash)) {
-    return "https://staging-spectrum-cloud.photon.codes";
-  }
+  // Default to the public Spectrum cloud. Point SPECTRUM_RUNTIME_HOST at a
+  // different deployment (e.g. your own staging cluster) to override.
   return "https://spectrum.photon.codes";
 }
 
