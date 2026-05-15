@@ -213,7 +213,8 @@
   .input-glass::placeholder {
     color: var(--color-text-dim);
   }
-  .input-glass:focus {
+  .input-glass:focus,
+  .input-glass:focus-within {
     outline: none;
     background: rgba(255, 255, 255, 0.92);
     border-color: rgba(0, 0, 0, 0.5);
