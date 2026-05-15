@@ -219,32 +219,27 @@ export async function POST(req: Request) {
       projectId = created.id;
     }
 
-    const { projectSecret } = await regenerateProjectSecret(bearer, projectId);
     await togglePlatform(bearer, projectId, "imessage", true);
 
     const details = await getProject(bearer, projectId);
-    const cloudProjectId = details.spectrumProjectId ?? projectId;
-    console.log(
-      `[provision] dashboard=${projectId} cloud=${details.spectrumProjectId ?? "(missing)"} reused=${reused}`,
-    );
-
-    let toggled = false;
-    for (let attempt = 1; attempt <= 4 && !toggled; attempt += 1) {
-      try {
-        await cloudTogglePlatform(cloudProjectId, projectSecret, "imessage", true);
-        toggled = true;
-      } catch (err) {
-        const is401 = err instanceof SpectrumError && err.status === 401;
-        if (!is401 || attempt === 4) {
-          console.warn(
-            "[provision] cloud iMessage toggle failed (non-fatal):",
-            err instanceof Error ? err.message : err,
-          );
-          break;
-        }
-        await new Promise((r) => setTimeout(r, 400 * attempt));
-      }
+    const cloudProjectId = details.spectrumProjectId ?? null;
+    if (!cloudProjectId) {
+      throw new SpectrumError(
+        "Spectrum project is missing a spectrumProjectId; cannot reach the cloud API.",
+        500,
+        { projectId },
+      );
     }
+
+    let projectSecret = typeof details.projectSecret === "string" ? details.projectSecret : null;
+    if (!projectSecret) {
+      const rotated = await regenerateProjectSecret(bearer, projectId);
+      projectSecret = rotated.projectSecret;
+    }
+
+    console.log(`[provision] dashboard=${projectId} cloud=${cloudProjectId} reused=${reused}`);
+
+    await cloudTogglePlatform(cloudProjectId, projectSecret, "imessage", true);
 
     let assigned: string | undefined;
     let spectrumUserRecordId: string | undefined;

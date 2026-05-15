@@ -227,6 +227,7 @@ export interface ProjectDetails {
   name?: string;
   spectrum?: boolean;
   spectrumProjectId?: string | null;
+  projectSecret?: string | null;
   [key: string]: unknown;
 }
 
