@@ -25,12 +25,6 @@ export const tenants = pgTable("tenants", {
   codexUserEmail: text("codex_user_email"),
   codexEnvironmentId: text("codex_environment_id"),
   codexEnvironmentBranch: text("codex_environment_branch").notNull().default("main"),
-
-  openaiKeyCiphertext: text("openai_key_ciphertext"),
-  openaiKeyIv: text("openai_key_iv"),
-  openaiKeyTag: text("openai_key_tag"),
-
-  previousResponseId: text("previous_response_id"),
   codexModel: text("codex_model").notNull().default("gpt-5-codex"),
 
   status: text("status").notNull().default("provisioned"),

@@ -16,6 +16,5 @@ jobs:
       build-command: "bun run build"
       no-npm-publish: true
     secrets:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       APP_ID: ${{ secrets.APP_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
