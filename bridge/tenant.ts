@@ -26,6 +26,10 @@ const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+// Hold incoming non-command messages briefly so an image + caption (which
+// iMessage delivers as two separate bubbles) reach Codex as a single task.
+const BATCH_DEBOUNCE_MS = 1500;
+const BATCH_MAX_MS = 8_000;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
   "image/jpeg",
@@ -52,12 +56,52 @@ interface MessageContent {
   mimeType?: string;
   read?: () => Promise<Buffer>;
   size?: number;
+  emoji?: string;
+  url?: string;
+  items?: Array<{ content?: MessageContent }>;
+  content?: MessageContent;
+}
+
+function flattenContent(top: MessageContent): MessageContent[] {
+  if (top.type === "effect" && top.content) {
+    return flattenContent(top.content);
+  }
+  if (top.type === "group" && Array.isArray(top.items)) {
+    const out: MessageContent[] = [];
+    for (const item of top.items) {
+      const inner = item?.content;
+      if (inner) out.push(...flattenContent(inner));
+    }
+    return out.length ? out : [top];
+  }
+  return [top];
 }
 
 interface PreparedInput {
   text: string;
   images: ImageInput[];
   unsupportedAttachments: number;
+}
+
+type ReplyableMessage = Message & {
+  reply: (text: string) => Promise<unknown>;
+  react?: (key: string) => Promise<unknown>;
+};
+
+interface BatchedItem {
+  m: ReplyableMessage;
+  content: MessageContent;
+  bodyText: string;
+}
+
+interface PendingBatch {
+  spaceId: string;
+  space: Space<unknown>;
+  items: BatchedItem[];
+  voiceCount: number;
+  debounceTimer: ReturnType<typeof setTimeout>;
+  hardTimer: ReturnType<typeof setTimeout>;
+  flushing: boolean;
 }
 
 export interface TenantHealth {
@@ -87,6 +131,7 @@ export class TenantWorker {
   private messagesHandled = 0;
   private lastMessageAt: number | null = null;
   private currentSecretCiphertext: string | null = null;
+  private pendingBatches = new Map<string, PendingBatch>();
 
   constructor(private tenant: Tenant) {}
 
@@ -127,6 +172,11 @@ export class TenantWorker {
   async stop() {
     this.stopRequested = true;
     this.running = false;
+    for (const batch of this.pendingBatches.values()) {
+      clearTimeout(batch.debounceTimer);
+      clearTimeout(batch.hardTimer);
+    }
+    this.pendingBatches.clear();
     if (this.app) {
       try {
         await this.app.stop();
@@ -229,18 +279,42 @@ export class TenantWorker {
   }
 
   private async handle(space: Space<unknown>, message: Message) {
-    const m = message as Message & {
-      reply: (text: string) => Promise<unknown>;
-      react?: (key: string) => Promise<unknown>;
-    };
-    const content = m.content as MessageContent;
+    const m = message as ReplyableMessage;
+    const top = m.content as MessageContent;
 
-    if (content.type === "reaction" || content.type === "poll" || content.type === "poll_option") {
+    // Flatten effect-wrapped and grouped messages so each leaf content gets
+    // routed individually. iMessage occasionally delivers a screen effect
+    // (e.g. invisible ink) or a multi-part bundle that should be treated like
+    // separate bubbles for Codex.
+    for (const content of flattenContent(top)) {
+      await this.routeContent(space, m, content);
+    }
+  }
+
+  private async routeContent(
+    space: Space<unknown>,
+    m: ReplyableMessage,
+    content: MessageContent,
+  ) {
+    // Reactions / polls / contacts / richlinks: we ack via log but never
+    // forward to Codex. Reactions on bot replies arrive here too and stay silent.
+    if (content.type === "reaction") {
+      await this.logEvent("in", "reaction", { emoji: content.emoji ?? null });
       return;
     }
-
-    if (content.type === "voice") {
-      await m.reply("Voice notes aren't supported yet — try a text message or a photo.");
+    if (content.type === "poll" || content.type === "poll_option") {
+      await this.logEvent("in", "poll", { type: content.type });
+      return;
+    }
+    if (content.type === "contact") {
+      await this.logEvent("in", "contact", {});
+      return;
+    }
+    if (content.type === "richlink") {
+      const url = typeof content.url === "string" ? content.url : null;
+      await this.logEvent("in", "richlink", { url });
+      const bodyText = url ? `Reference link: ${url}` : "";
+      if (bodyText) this.enqueueForBatch(space, m, content, bodyText);
       return;
     }
 
@@ -249,7 +323,9 @@ export class TenantWorker {
       bodyText = content.text.trim();
     }
 
+    // Commands & intro triggers bypass the batcher so they stay snappy.
     if (bodyText === "/new") {
+      this.flushBatchNow(space.id);
       await this.resetThread(space.id);
       if (m.react) {
         await m.react(RESET_REACTION).catch(() => {});
@@ -258,13 +334,13 @@ export class TenantWorker {
       }
       return;
     }
-
     if (INTRO_TRIGGERS.has(bodyText.toLowerCase())) {
+      this.flushBatchNow(space.id);
       await this.sendOnboardingIntro(space, m);
       return;
     }
-
     if (bodyText.startsWith("/")) {
+      this.flushBatchNow(space.id);
       const handled = await this.handleCommand(space, m, bodyText);
       if (handled) return;
     }
@@ -274,18 +350,108 @@ export class TenantWorker {
       return;
     }
 
-    const prepared = await this.prepareInput(content, bodyText);
-    if (!prepared.text && prepared.images.length === 0) return;
+    // Voice, attachments (incl. stickers), text → queue into the per-space
+    // batch so a caption + photo land on Codex as one task.
+    this.enqueueForBatch(space, m, content, bodyText);
+  }
 
-    const started = Date.now();
+  private enqueueForBatch(
+    space: Space<unknown>,
+    m: ReplyableMessage,
+    content: MessageContent,
+    bodyText: string,
+  ) {
     if (m.react) {
       m.react(ACK_REACTION).catch(() => {});
     }
+    const existing = this.pendingBatches.get(space.id);
+    if (existing) {
+      clearTimeout(existing.debounceTimer);
+      existing.items.push({ m, content, bodyText });
+      if (content.type === "voice") existing.voiceCount += 1;
+      existing.debounceTimer = setTimeout(() => {
+        void this.flushBatch(space.id);
+      }, BATCH_DEBOUNCE_MS);
+      return;
+    }
+    const batch: PendingBatch = {
+      spaceId: space.id,
+      space,
+      items: [{ m, content, bodyText }],
+      voiceCount: content.type === "voice" ? 1 : 0,
+      debounceTimer: setTimeout(() => {
+        void this.flushBatch(space.id);
+      }, BATCH_DEBOUNCE_MS),
+      hardTimer: setTimeout(() => {
+        void this.flushBatch(space.id);
+      }, BATCH_MAX_MS),
+      flushing: false,
+    };
+    this.pendingBatches.set(space.id, batch);
+  }
+
+  private flushBatchNow(spaceId: string) {
+    const batch = this.pendingBatches.get(spaceId);
+    if (!batch || batch.flushing) return;
+    clearTimeout(batch.debounceTimer);
+    clearTimeout(batch.hardTimer);
+    // Kick the flush but don't await it — the calling command (e.g. /help)
+    // should respond immediately while the prior batch resolves in the background.
+    void this.flushBatch(spaceId);
+  }
+
+  private async flushBatch(spaceId: string) {
+    const batch = this.pendingBatches.get(spaceId);
+    if (!batch || batch.flushing) return;
+    batch.flushing = true;
+    clearTimeout(batch.debounceTimer);
+    clearTimeout(batch.hardTimer);
+    this.pendingBatches.delete(spaceId);
+    try {
+      await this.dispatchBatch(batch);
+    } catch (err) {
+      console.error(`[tenant ${this.tenant.id}] batch dispatch failed:`, err);
+    }
+  }
+
+  private async dispatchBatch(batch: PendingBatch) {
+    const first = batch.items[0];
+    if (!first) return;
+    const space = batch.space;
+    const headM = first.m;
+
+    const texts: string[] = [];
+    const images: ImageInput[] = [];
+    let unsupportedAttachments = 0;
+
+    for (const item of batch.items) {
+      if (item.bodyText) texts.push(item.bodyText);
+      const prepared = await this.prepareInput(item.content, "");
+      if (prepared.images.length) images.push(...prepared.images);
+      unsupportedAttachments += prepared.unsupportedAttachments;
+    }
+
+    const mergedText = texts.join("\n\n").trim();
+    const voiceOnly = batch.voiceCount > 0 && !mergedText && images.length === 0;
+    if (voiceOnly) {
+      await headM.reply(
+        "Voice notes aren't supported yet — send the same idea as text or a screenshot and I'll take it from there.",
+      );
+      if (headM.react) {
+        headM.react(DONE_REACTION).catch(() => {});
+      }
+      await this.logEvent("in", "voice_only", { count: batch.voiceCount });
+      return;
+    }
+
+    if (!mergedText && images.length === 0) return;
+
+    const started = Date.now();
     try {
       await space.responding(async () => {
         const { accessToken, environmentId } = await this.ensureAccessAndEnv();
         const existing = await this.getThread(space.id);
-        const inputText = prepared.text || "What's in this image?";
+        const inputText = mergedText || "What's in this image?";
         let result: Awaited<ReturnType<typeof createTask>> | Awaited<ReturnType<typeof followUp>>;
         if (existing?.lastTurnId) {
           result = await followUp({
@@ -293,7 +459,7 @@ export class TenantWorker {
             taskId: existing.whamTaskId,
             previousTurnId: existing.lastTurnId,
             text: inputText,
-            images: prepared.images,
+            images,
           });
         } else {
           result = await createTask({
@@ -301,7 +467,7 @@ export class TenantWorker {
             environmentId,
             branch: this.tenant.codexEnvironmentBranch,
             text: inputText,
-            images: prepared.images,
+            images,
           });
         }
 
@@ -309,28 +475,35 @@ export class TenantWorker {
         const turnId = reply.current_turn_id ?? result.current_turn_id;
         await this.upsertThread(space.id, result.task.id, turnId);
 
+        const voiceFooter =
+          batch.voiceCount > 0 && (mergedText || images.length > 0)
+            ? "(Voice notes aren't processed yet — send the gist as text and I'll act on it.)"
+            : null;
         const composed = composeReply(
           reply.text,
           reply.error,
           reply.pull_request_url,
-          prepared.unsupportedAttachments,
+          unsupportedAttachments,
+          voiceFooter,
         );
         const [firstChunk, ...restChunks] = composed.chunks;
-        if (firstChunk !== undefined) await m.reply(firstChunk);
+        if (firstChunk !== undefined) await headM.reply(firstChunk);
         for (const chunk of restChunks) {
           await space.send(chunk);
         }
         if (composed.prUrl) {
           await space.send(richlink(composed.prUrl));
         }
-        if (m.react) {
-          m.react(DONE_REACTION).catch(() => {});
+        if (headM.react) {
+          headM.react(DONE_REACTION).catch(() => {});
         }
         await this.logEvent("out", "reply", {
           taskId: result.task.id,
           status: reply.status,
           inLen: inputText.length,
-          imageCount: prepared.images.length,
+          imageCount: images.length,
+          batchSize: batch.items.length,
+          voiceCount: batch.voiceCount,
           outLen: composed.chunks.reduce((n, c) => n + c.length, 0),
           chunkCount: composed.chunks.length,
           latencyMs: Date.now() - started,
@@ -339,12 +512,12 @@ export class TenantWorker {
     } catch (err) {
       console.error(`[tenant ${this.tenant.id}] codex error:`, err);
       if (err instanceof CodexCloudError && err.status === 412) {
-        await m.reply(
+        await headM.reply(
           "Connect a GitHub repo to Codex before texting — I need an environment to run in.",
         );
         await space.send(richlink(CONNECT_ENVIRONMENTS_URL));
       } else {
-        await m.reply(friendlyError(err));
+        await headM.reply(friendlyError(err));
       }
       await this.logEvent("error", "codex", {
         error: serializeError(err),
@@ -716,6 +889,7 @@ function composeReply(
   error: string | null,
   prUrl: string | null,
   unsupportedAttachments: number,
+  voiceFooter?: string | null,
 ): { chunks: string[]; prUrl: string | null } {
   const chunks: string[] = [];
   if (text) chunks.push(...splitIntoBubbles(text));
@@ -728,6 +902,7 @@ function composeReply(
         : `(${unsupportedAttachments} attachments were skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)`,
     );
   }
+  if (voiceFooter) chunks.push(voiceFooter);
   if (chunks.length === 0) {
     chunks.push("Codex returned an empty reply. Try again or send /new.");
   }
