@@ -50,7 +50,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: var(--color-text);
-    background: var(--color-bg);
+    background: #b9b2ff;
     text-rendering: optimizeSpeed;
   }
 

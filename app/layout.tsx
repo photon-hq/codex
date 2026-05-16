@@ -22,7 +22,7 @@ const SITE_URL =
   (process.env.NODE_ENV === "production" ? "https://codex.pho.town" : "http://localhost:3000");
 
 export const viewport: Viewport = {
-  themeColor: "#dcd3ff",
+  themeColor: "#b9b2ff",
 };
 
 export const metadata: Metadata = {
