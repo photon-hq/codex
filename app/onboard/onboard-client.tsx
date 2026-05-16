@@ -459,10 +459,9 @@ function StageContent({
     case "done":
       return (
         <>
-          <h1 className="section-title fade-up fade-up-4 mt-4">You&rsquo;re live</h1>
+          <h1 className="section-title fade-up fade-up-4 mt-4">Opening iMessage&hellip;</h1>
           <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-            Text the number below from any iPhone — Codex picks up instantly and replies sync to
-            chatgpt.com/codex.
+            Bring Codex to your favorite thread &mdash; we&rsquo;re starting iMessage for you now.
           </p>
           {tenant && (
             <DonePanel phoneNumber={tenant.phoneNumber} redirectUri={tenant.redirectUri} />
@@ -794,6 +793,17 @@ function DonePanel({
     }
   };
 
+  const openImessage = useCallback(() => {
+    if (!redirectUri) return;
+    window.location.href = redirectUri;
+  }, [redirectUri]);
+
+  useEffect(() => {
+    if (!redirectUri) return;
+    const t = window.setTimeout(openImessage, 400);
+    return () => window.clearTimeout(t);
+  }, [redirectUri, openImessage]);
+
   const disconnect = async () => {
     setDisconnecting(true);
     try {
@@ -834,11 +844,20 @@ function DonePanel({
           )}
         </span>
       </button>
-      <div className="fade-up fade-up-7 mt-8 flex flex-col items-center gap-2.5">
+      <div className="fade-up fade-up-7 mt-8 flex w-full max-w-[28rem] flex-col items-center gap-3 text-center">
+        <p className="text-[13.5px] leading-snug text-[var(--color-text-muted)]">
+          Sometimes your browser blocks the jump to iMessage. If nothing opened in a moment, text{" "}
+          <span className="font-medium text-[var(--color-text)]">{phoneNumber}</span> manually from
+          the Messages app to start the thread.
+        </p>
         {redirectUri && (
-          <a href={redirectUri} className="btn-pill-primary inline-flex items-center gap-1.5">
-            <MessageSquare size={14} /> Open in iMessage
-          </a>
+          <button
+            type="button"
+            onClick={openImessage}
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+          >
+            <MessageSquare size={12} /> Try opening iMessage again
+          </button>
         )}
         <Link
           href="/dashboard"

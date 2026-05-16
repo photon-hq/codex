@@ -1,16 +1,7 @@
 "use client";
 
 import { BackHomePill, CodexIcon, TopNav } from "@/components/chrome";
-import {
-  Check,
-  Copy,
-  ExternalLink,
-  Loader2,
-  LogOut,
-  MessageSquare,
-  RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { Check, Copy, Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -35,7 +26,6 @@ export default function DashboardClient() {
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
-  const [reLinking, setReLinking] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
@@ -65,31 +55,6 @@ export default function DashboardClient() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
-
-  const reLinkCodex = useCallback(async () => {
-    setReLinking(true);
-    try {
-      const res = await fetch("/api/codex/device/start", { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error ?? "device start failed");
-      const data = await res.json();
-      const url = data.verification_uri_complete ?? data.verification_url;
-      window.open(url, "_blank", "noopener");
-      toast.success("Open the OpenAI tab", {
-        description: `Enter code ${data.user_code} to relink, then return here.`,
-      });
-    } catch (err) {
-      toast.error("Couldn't start ChatGPT relink", {
-        description: err instanceof Error ? err.message : "device start failed",
-      });
-    } finally {
-      setReLinking(false);
-    }
-  }, []);
-
-  const logout = useCallback(async () => {
-    await fetch("/api/oauth/logout", { method: "POST" });
-    router.replace("/");
-  }, [router]);
 
   const disconnect = useCallback(async () => {
     setDisconnecting(true);
@@ -138,19 +103,7 @@ export default function DashboardClient() {
 
   return (
     <>
-      <TopNav
-        left={<BackHomePill />}
-        right={
-          <button
-            type="button"
-            onClick={logout}
-            className="btn-pill-secondary nav-link inline-flex items-center gap-1.5"
-            style={{ padding: "0.4375rem 0.875rem", fontSize: "13px" }}
-          >
-            <LogOut size={12} /> Sign out
-          </button>
-        }
-      />
+      <TopNav left={<BackHomePill />} right={<span />} />
       <main className="relative flex flex-1 flex-col">
         <div className="safe-bottom flex w-full flex-1 flex-col items-center px-5 pb-20 pt-10 sm:px-8 sm:pt-16">
           <div className="flex w-full max-w-[480px] flex-col items-center text-center">
@@ -205,23 +158,7 @@ export default function DashboardClient() {
               </div>
             )}
 
-            <div className="fade-up fade-up-7 mt-12 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-3 border-t border-[var(--color-border)] pt-8 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
-              <button
-                type="button"
-                onClick={reLinkCodex}
-                disabled={reLinking}
-                className="inline-flex items-center gap-1.5 hover:text-[var(--color-text)] disabled:opacity-60"
-              >
-                <RotateCcw size={12} /> {reLinking ? "Starting…" : "Re-link ChatGPT"}
-              </button>
-              <a
-                href={codexUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 hover:text-[var(--color-text)]"
-              >
-                <ExternalLink size={12} /> Codex on web
-              </a>
+            <div className="fade-up fade-up-7 mt-12 flex w-full items-center justify-center text-[12.5px] font-medium tracking-[-0.005em]">
               {!confirmDisconnect ? (
                 <button
                   type="button"
@@ -231,7 +168,7 @@ export default function DashboardClient() {
                   <Trash2 size={12} /> Disconnect
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-3">
                   <button
                     type="button"
                     onClick={disconnect}
@@ -249,7 +186,7 @@ export default function DashboardClient() {
                     type="button"
                     onClick={() => setConfirmDisconnect(false)}
                     disabled={disconnecting}
-                    className="hover:text-[var(--color-text)]"
+                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                   >
                     Cancel
                   </button>
