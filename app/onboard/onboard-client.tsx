@@ -59,16 +59,9 @@ export default function OnboardClient() {
     void fetch("/api/tenant/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!data) {
-          setBootstrapped(true);
-          return;
-        }
-        if (data.provisioned && data.tenant.codexLinked) {
+        if (data?.provisioned && data.tenant.codexLinked) {
           router.replace("/dashboard");
           return;
-        }
-        if (data.provisioned) {
-          setStage("codex");
         }
         setBootstrapped(true);
       })
@@ -101,6 +94,13 @@ export default function OnboardClient() {
       setBusy(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!bootstrapped || stage !== "codex" || busy || codexDevice) {
+      return;
+    }
+    void beginCodex();
+  }, [bootstrapped, stage, busy, codexDevice, beginCodex]);
 
   useEffect(() => {
     if (stage !== "codex-device" || !codexDevice) {
@@ -354,8 +354,7 @@ function StageIcon({ stage }: { stage: Stage }) {
           <ChatGPTChip />
           <span
             aria-hidden
-            className="check-pop absolute -right-1 -bottom-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-white shadow-[0_4px_14px_-4px_rgba(16,163,127,0.7)]"
-            style={{ background: "var(--color-success)" }}
+            className="check-pop absolute -right-1 -bottom-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-text)] text-white shadow-[0_4px_14px_-4px_rgba(20,20,30,0.4)]"
           >
             <Check size={13} strokeWidth={3} />
           </span>
@@ -422,7 +421,7 @@ function StageContent({
       return (
         <CodexLandingStage
           busy={busy}
-          onSubmit={beginCodex}
+          onRetry={beginCodex}
           showDeviceAuthHint={showDeviceAuthHint}
         />
       );
@@ -434,10 +433,6 @@ function StageContent({
       return (
         <>
           <h1 className="section-title fade-up fade-up-4 mt-4">Sign in with ChatGPT</h1>
-          <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-            Open the link, then enter the code. We use your ChatGPT subscription — no API key
-            needed.
-          </p>
           {codexDevice && <CodexDeviceCard device={codexDevice} />}
         </>
       );
@@ -661,33 +656,34 @@ function CodexSuccessStage({ email }: { email: string | null }) {
 
 function CodexLandingStage({
   busy,
-  onSubmit,
+  onRetry,
   showDeviceAuthHint,
 }: {
   busy: boolean;
-  onSubmit: () => void;
+  onRetry: () => void;
   showDeviceAuthHint: boolean;
 }) {
   return (
     <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Connect ChatGPT</h1>
-      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-        Use your ChatGPT subscription &mdash; no API key. iMessage threads sync to
-        chatgpt.com/codex.
-      </p>
-      <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
-        <button
-          className="btn-pill-primary inline-flex w-full items-center justify-center"
-          disabled={busy}
-          onClick={onSubmit}
-          type="button"
-        >
-          {busy ? <Loader2 className="mr-1.5 animate-spin" size={14} /> : null}
-          Continue with ChatGPT
-          {!busy && <ArrowRight className="ml-1.5" size={14} />}
-        </button>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Sign in with ChatGPT</h1>
+      <div className="fade-up fade-up-6 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-3">
+        {busy ? (
+          <span className="inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
+            <Loader2 className="animate-spin" size={12} /> Reaching OpenAI&hellip;
+          </span>
+        ) : (
+          <button
+            className="btn-pill-primary inline-flex items-center justify-center"
+            disabled={busy}
+            onClick={onRetry}
+            type="button"
+          >
+            Try again
+            <ArrowRight className="ml-1.5" size={14} />
+          </button>
+        )}
         {showDeviceAuthHint && (
-          <div className="fade-up mt-4 rounded-[10px] border border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] px-3 py-2.5 text-left">
+          <div className="fade-up mt-1 w-full rounded-[10px] border border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] px-3 py-2.5 text-left">
             <p className="text-[12px] text-[var(--color-text-muted)] leading-snug">
               <span className="font-medium text-[var(--color-text)]">
                 Authorization Error from OpenAI?
@@ -742,41 +738,29 @@ function DeviceCardLayout({
   userCode: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const copy = async () => {
+  const copy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(userCode);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      setTimeout(() => setCopied(false), 1800);
     } catch {
-      toast.error("Couldn't copy", { description: "Clipboard access was denied." });
+      // clipboard may be unavailable (e.g., insecure context); user can tap to copy manually
     }
-  };
+  }, [userCode]);
+
+  useEffect(() => {
+    void copy();
+  }, [copy]);
+
   const half = Math.ceil(userCode.length / 2);
   const firstHalf = userCode.slice(0, half);
   const secondHalf = userCode.slice(half);
 
   return (
     <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center px-1">
-      <a
-        className="btn-pill-primary inline-flex max-w-full items-center gap-1.5"
-        href={openUrl}
-        rel="noreferrer"
-        target="_blank"
-      >
-        <span className="truncate">
-          Continue on <span className="xs:inline hidden">{verificationHost}</span>
-          <span className="xs:hidden">OpenAI</span>
-        </span>
-        <ExternalLink className="flex-shrink-0" size={13} />
-      </a>
-      <div className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
-        <Loader2 className="animate-spin" size={12} />
-        <span>Waiting for you to approve&hellip;</span>
-      </div>
-
-      <div className="mt-7 flex flex-col items-center">
+      <div className="flex flex-col items-center">
         <span className="text-[11.5px] text-[var(--color-text-dim)] uppercase tracking-[0.12em]">
-          Paste this code
+          {copied ? "Code copied — paste at the next step" : "Paste this code"}
         </span>
         <button
           aria-label="Copy verification code"
@@ -794,13 +778,30 @@ function DeviceCardLayout({
             aria-hidden
             className={`pointer-events-none absolute top-1/2 -right-6 -translate-y-1/2 transition-opacity ${
               copied
-                ? "text-[var(--color-success)] opacity-100"
+                ? "text-[var(--color-text)] opacity-100"
                 : "text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100"
             }`}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
           </span>
         </button>
+      </div>
+
+      <a
+        className="btn-pill-primary mt-7 inline-flex max-w-full items-center gap-1.5"
+        href={openUrl}
+        rel="noreferrer"
+        target="_blank"
+      >
+        <span className="truncate">
+          Continue on <span className="xs:inline hidden">{verificationHost}</span>
+          <span className="xs:hidden">OpenAI</span>
+        </span>
+        <ExternalLink className="flex-shrink-0" size={13} />
+      </a>
+      <div className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
+        <Loader2 className="animate-spin" size={12} />
+        <span>Waiting for you to approve&hellip;</span>
       </div>
     </div>
   );

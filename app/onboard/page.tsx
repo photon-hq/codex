@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import { BackHomePill, PageShell, TopNav } from "@/components/chrome";
+import { PageShell, TopNav } from "@/components/chrome";
 import OnboardClient from "./onboard-client";
 
 export default function OnboardPage() {
   return (
     <>
-      <TopNav left={<BackHomePill />} right={<span />} />
+      <TopNav right={<span />} />
       <PageShell contentClassName="justify-center">
         <Suspense
           fallback={

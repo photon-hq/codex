@@ -4,7 +4,7 @@ import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { BackHomePill, CodexIcon, PageShell, TopNav } from "@/components/chrome";
+import { CodexIcon, PageShell, TopNav } from "@/components/chrome";
 
 interface Me {
   provisioned: boolean;
@@ -117,7 +117,7 @@ export default function DashboardClient() {
 
   return (
     <>
-      <TopNav left={<BackHomePill />} right={<span />} />
+      <TopNav right={<span />} />
       <PageShell contentClassName="justify-center">
         <div className="flex w-full max-w-[480px] flex-col items-center gap-10 text-center">
           <div className="flex w-full flex-col items-center">

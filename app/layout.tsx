@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { BackdropVideo } from "@/components/chrome";
@@ -20,6 +20,10 @@ const geistMono = Geist_Mono({
 const SITE_URL =
   process.env.PUBLIC_URL ??
   (process.env.NODE_ENV === "production" ? "https://codex.pho.town" : "http://localhost:3000");
+
+export const viewport: Viewport = {
+  themeColor: "#b9b2ff",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
