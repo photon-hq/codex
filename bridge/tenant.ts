@@ -41,9 +41,9 @@ const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const BATCH_DEBOUNCE_MS = 5000;
 const BATCH_MAX_MS = 20_000;
 // If a dispatch claimed rows but never deleted them, treat the claim as
-// abandoned after 5 minutes and re-queue. Longer than any realistic Codex
-// task, shorter than a typical user "wait, did this work?" patience window.
-const STALE_DISPATCH_MS = 5 * 60_000;
+// abandoned and re-queue it after a short grace window. This covers deploy
+// restarts where a worker dies after claiming rows but before Codex receives them.
+const STALE_DISPATCH_MS = 30_000;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
   "image/jpeg",
@@ -274,6 +274,14 @@ export class TenantWorker {
     void this.recoverOrphanedBatches().catch((err) => {
       console.error(`[tenant ${this.tenant.id}] orphan recovery failed:`, err);
     });
+    setTimeout(() => {
+      if (this.stopRequested || this.app !== app) {
+        return;
+      }
+      void this.recoverOrphanedBatches().catch((err) => {
+        console.error(`[tenant ${this.tenant.id}] delayed orphan recovery failed:`, err);
+      });
+    }, STALE_DISPATCH_MS + 1000);
 
     try {
       for await (const [space, message] of app.messages) {
@@ -488,15 +496,19 @@ export class TenantWorker {
       await this.dispatchBatch(rows, batch?.space, batch?.headM);
     } catch (err) {
       console.error(`[tenant ${this.tenant.id}] batch dispatch failed:`, err);
-    } finally {
-      // Regardless of outcome — success or final error reply to the user —
-      // drop the rows. They've been handled. (If the process died mid-flight
-      // before this `finally`, the startup-scan in subscribe() resets stale
-      // dispatched_at claims and they retry.)
-      await this.deleteRows(rows).catch((err) => {
-        console.error(`[tenant ${this.tenant.id}] delete rows failed:`, err);
+      await this.releaseRows(rows).catch((releaseErr) => {
+        console.error(`[tenant ${this.tenant.id}] release rows failed:`, releaseErr);
       });
+      return;
     }
+
+    // Success or final error reply to the user means the batch was handled.
+    // If the process dies before this point, startup recovery releases stale
+    // dispatched_at claims so the next bridge process can retry them.
+    await this.deleteRows(rows).catch((err) => {
+      console.error(`[tenant ${this.tenant.id}] delete rows failed:`, err);
+    });
+
   }
 
   private async claimQueuedRows(spaceId: string): Promise<BatchQueueRow[]> {
@@ -528,6 +540,22 @@ export class TenantWorker {
     );
   }
 
+  private async releaseRows(rows: BatchQueueRow[]) {
+    if (rows.length === 0) {
+      return;
+    }
+    const db = getDb();
+    await db
+      .update(batchQueue)
+      .set({ dispatchedAt: null })
+      .where(
+        inArray(
+          batchQueue.id,
+          rows.map((r) => r.id)
+        )
+      );
+  }
+
   private async dispatchBatch(
     rows: BatchQueueRow[],
     space: Space<unknown> | undefined,
@@ -543,10 +571,7 @@ export class TenantWorker {
     // conversation even without a Message handle.
     const liveSpace = space ?? (await this.resolveSpace(rows));
     if (!liveSpace) {
-      console.warn(
-        `[tenant ${this.tenant.id}] could not resolve space ${rows[0].spaceId} for replay`
-      );
-      return;
+      throw new Error(`could not resolve space ${rows[0].spaceId} for queued replay`);
     }
 
     const texts: string[] = [];
@@ -704,10 +729,9 @@ export class TenantWorker {
     }
   }
 
-  // Recover queue rows orphaned by a crash. Called once after the app
-  // subscribes successfully so any messages dropped on the floor during a
-  // deploy get a graceful "I missed some — please resend" notice instead of
-  // silent loss.
+  // Recover queue rows orphaned by a crash or deployment restart. It runs once
+  // immediately after subscription and once more after the stale-claim grace
+  // window so rows claimed just before restart are also retried.
   private async recoverOrphanedBatches() {
     const db = getDb();
     // Any rows we claimed but never deleted (the dispatch died mid-flight

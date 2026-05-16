@@ -42,6 +42,36 @@ const STEP_INDEX: Record<Stage, number> = {
 };
 const TOTAL_STEPS = 4;
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    await navigator.clipboard?.writeText(text);
+    return true;
+  } catch {}
+
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.top = "0";
+    textarea.style.left = "-9999px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 export default function OnboardClient() {
   const router = useRouter();
   const [bootstrapped, setBootstrapped] = useState(false);
@@ -84,6 +114,7 @@ export default function OnboardClient() {
         throw new Error(body.error ?? `device start failed (${res.status})`);
       }
       const data = (await res.json()) as CodexDeviceState;
+      void copyTextToClipboard(data.user_code);
       setCodexDevice(data);
       setStage("codex-device");
     } catch (err) {
@@ -178,6 +209,7 @@ export default function OnboardClient() {
         throw new Error((await res.json()).error ?? "device flow start failed");
       }
       const data = (await res.json()) as SpectrumDeviceState;
+      void copyTextToClipboard(data.user_code);
       setSpectrumDevice(data);
       setStage("spectrum-device");
     } catch (err) {
@@ -736,7 +768,10 @@ function DeviceCardLayout({
   const [copied, setCopied] = useState(false);
   const copy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(userCode);
+      const ok = await copyTextToClipboard(userCode);
+      if (!ok) {
+        return;
+      }
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -786,6 +821,9 @@ function DeviceCardLayout({
       <a
         className="btn-pill-primary mt-7 inline-flex max-w-full items-center gap-1.5"
         href={openUrl}
+        onClick={() => {
+          void copy();
+        }}
         rel="noreferrer"
         target="_blank"
       >
