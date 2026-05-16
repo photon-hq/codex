@@ -28,7 +28,7 @@ tapback flips to ❤️ when the task is finished.
 - ChatGPT OAuth tokens are AES-256-GCM encrypted at rest.
 - Disconnect any time from the dashboard. Codex stops replying immediately
   and the encrypted tokens are wiped.
-- Full notice: [PRIVACY.md](./PRIVACY.md).
+- Full notice: [PRIVACY.md](./docs/PRIVACY.md).
 
 ## Legal & trademarks
 
@@ -42,9 +42,9 @@ or sponsored by** OpenAI or Apple.
 
 Use of these names here is purely descriptive — to identify the upstream
 services this bridge talks to. We do not redistribute or rehost OpenAI
-or Apple artwork. See [NOTICE.md](./NOTICE.md) for the full statement.
+or Apple artwork. See [NOTICE.md](./docs/NOTICE.md) for the full statement.
 
-Terms of use: [TERMS.md](./TERMS.md).
+Terms of use: [TERMS.md](./docs/TERMS.md).
 
 Rights holders: open an issue or email **daniel@photon.codes** and we will
 respond promptly.
@@ -52,5 +52,5 @@ respond promptly.
 ## License
 
 [MIT](./LICENSE). You also accept the project's
-[Notice](./NOTICE.md), [Terms](./TERMS.md), and [Privacy](./PRIVACY.md)
+[Notice](./docs/NOTICE.md), [Terms](./docs/TERMS.md), and [Privacy](./docs/PRIVACY.md)
 when using the hosted Service.

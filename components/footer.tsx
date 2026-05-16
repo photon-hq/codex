@@ -3,9 +3,9 @@ import type { ReactNode } from "react";
 const PHOTON_URL = "https://photon.codes";
 const DISCORD_URL = "https://discord.gg/Y6ymaZYpsz";
 const GITHUB_URL = "https://github.com/photon-hq/codex";
-const TERMS_URL = "https://github.com/photon-hq/codex/blob/main/TERMS.md";
-const PRIVACY_URL = "https://github.com/photon-hq/codex/blob/main/PRIVACY.md";
-const NOTICE_URL = "https://github.com/photon-hq/codex/blob/main/NOTICE.md";
+const TERMS_URL = "https://github.com/photon-hq/codex/blob/main/docs/TERMS.md";
+const PRIVACY_URL = "https://github.com/photon-hq/codex/blob/main/docs/PRIVACY.md";
+const NOTICE_URL = "https://github.com/photon-hq/codex/blob/main/docs/NOTICE.md";
 
 export function Footer() {
   return (

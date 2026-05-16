@@ -83,7 +83,7 @@ are under the minimum age required by ChatGPT / Apple in your country.
 ## 8. Changes
 
 We will post material changes to this document at
-[github.com/photon-hq/codex/blob/main/PRIVACY.md](https://github.com/photon-hq/codex/blob/main/PRIVACY.md).
+[github.com/photon-hq/codex/blob/main/docs/PRIVACY.md](https://github.com/photon-hq/codex/blob/main/docs/PRIVACY.md).
 
 ## 9. Contact
 

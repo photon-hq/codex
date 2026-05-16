@@ -71,7 +71,7 @@ use of those services is subject to their respective terms.
 ## 8. Changes
 
 We may update these terms by posting a revised version at
-[github.com/photon-hq/codex/blob/main/TERMS.md](https://github.com/photon-hq/codex/blob/main/TERMS.md).
+[github.com/photon-hq/codex/blob/main/docs/TERMS.md](https://github.com/photon-hq/codex/blob/main/docs/TERMS.md).
 Continued use after a change constitutes acceptance.
 
 ## 9. Contact

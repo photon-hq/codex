@@ -601,7 +601,7 @@ function PhoneStage({
             By continuing you agree to the{" "}
             <a
               className="underline underline-offset-2 hover:text-[var(--color-text)]"
-              href="https://github.com/photon-hq/codex/blob/main/TERMS.md"
+              href="https://github.com/photon-hq/codex/blob/main/docs/TERMS.md"
               rel="noopener noreferrer"
               target="_blank"
             >
@@ -610,7 +610,7 @@ function PhoneStage({
             and{" "}
             <a
               className="underline underline-offset-2 hover:text-[var(--color-text)]"
-              href="https://github.com/photon-hq/codex/blob/main/PRIVACY.md"
+              href="https://github.com/photon-hq/codex/blob/main/docs/PRIVACY.md"
               rel="noopener noreferrer"
               target="_blank"
             >
