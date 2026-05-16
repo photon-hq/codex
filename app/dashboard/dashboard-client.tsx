@@ -56,6 +56,27 @@ export default function DashboardClient() {
     void refresh();
   }, [refresh]);
 
+  const tenantHref = me?.tenant ? (me.tenant.redirectUri ?? `sms:${me.tenant.phoneNumber}`) : null;
+
+  const openImessage = useCallback(() => {
+    if (!tenantHref) return;
+    window.location.href = tenantHref;
+  }, [tenantHref]);
+
+  useEffect(() => {
+    if (!tenantHref) return;
+    try {
+      if (window.sessionStorage.getItem("codex.imessageOpened") === "1") return;
+      window.sessionStorage.setItem("codex.imessageOpened", "1");
+    } catch {
+      // sessionStorage might be unavailable; fall through and open once.
+    }
+    const handle = window.setTimeout(() => {
+      window.location.href = tenantHref;
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [tenantHref]);
+
   const disconnect = useCallback(async () => {
     setDisconnecting(true);
     try {
@@ -119,17 +140,19 @@ export default function DashboardClient() {
               <CopyableNumber number={t.phoneNumber} />
             </h1>
 
-            <p className="fade-up fade-up-5 mt-4 max-w-[28ch] text-[14px] leading-snug text-[var(--color-text-muted)]">
-              Text this number from iMessage. Codex replies in the same thread.
+            <p className="fade-up fade-up-5 mt-4 max-w-[34ch] text-[14px] leading-snug text-[var(--color-text-muted)]">
+              Opening iMessage now. If your browser blocked the jump, text this number manually from
+              the Messages app — Codex replies in the same thread.
             </p>
 
-            <div className="fade-up fade-up-6 mt-8 flex w-full flex-col items-center gap-2.5">
-              <a
-                href={t.redirectUri ?? `sms:${t.phoneNumber}`}
-                className="btn-pill-primary inline-flex items-center gap-1.5"
+            <div className="fade-up fade-up-6 mt-7 flex w-full flex-col items-center gap-2.5">
+              <button
+                type="button"
+                onClick={openImessage}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
               >
-                <MessageSquare size={14} /> Open in iMessage
-              </a>
+                <MessageSquare size={12} /> Try opening iMessage again
+              </button>
               <a
                 href={codexUrl}
                 target="_blank"
