@@ -1,5 +1,5 @@
 const PHOTON_URL = "https://photon.codes";
-const DISCORD_URL = "https://discord.gg/3bUP7yWS";
+const DISCORD_URL = "https://discord.gg/zX3NGecs";
 const GITHUB_URL = "https://github.com/photon-hq/codex";
 
 export function Footer() {
