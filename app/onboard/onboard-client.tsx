@@ -585,6 +585,27 @@ function PhoneStage({
             Continue
             {!busy && <ArrowRight size={14} className="ml-1.5" />}
           </button>
+          <p className="mt-3 max-w-[28rem] text-center text-[11.5px] leading-snug text-[var(--color-text-muted)]">
+            By continuing you agree to the{" "}
+            <a
+              href="https://github.com/photon-hq/codex/blob/main/TERMS.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-[var(--color-text)]"
+            >
+              Terms
+            </a>{" "}
+            and{" "}
+            <a
+              href="https://github.com/photon-hq/codex/blob/main/PRIVACY.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-[var(--color-text)]"
+            >
+              Privacy Notice
+            </a>
+            . Unofficial bridge — not affiliated with OpenAI or Apple.
+          </p>
         </form>
       </div>
     </>

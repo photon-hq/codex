@@ -1,20 +1,34 @@
+import type { ReactNode } from "react";
+
 const PHOTON_URL = "https://photon.codes";
 const DISCORD_URL = "https://discord.gg/zX3NGecs";
 const GITHUB_URL = "https://github.com/photon-hq/codex";
+const TERMS_URL = "https://github.com/photon-hq/codex/blob/main/TERMS.md";
+const PRIVACY_URL = "https://github.com/photon-hq/codex/blob/main/PRIVACY.md";
+const NOTICE_URL = "https://github.com/photon-hq/codex/blob/main/NOTICE.md";
 
 export function Footer() {
   return (
     <div className="relative z-10 mt-auto flex w-full flex-col">
-      <div className="flex w-full items-center justify-center px-6 py-4 text-center sm:px-10">
-        <a
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium tracking-[-0.01em] text-[var(--color-text-muted)] transition-colors hover:text-[var(--color-text)]"
-        >
-          <GithubIcon />
-          View on GitHub
-        </a>
+      <div className="flex w-full flex-col items-center gap-2 px-6 py-4 text-center sm:px-10">
+        <p className="max-w-[44ch] text-[11.5px] leading-snug tracking-[-0.005em] text-[var(--color-text-muted)]">
+          Independent bridge — not affiliated with OpenAI or Apple. ChatGPT®, Codex, and iMessage®
+          are trademarks of their respective owners.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
+          <a
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 transition-colors hover:text-[var(--color-text)]"
+          >
+            <GithubIcon />
+            GitHub
+          </a>
+          <FooterLink href={TERMS_URL}>Terms</FooterLink>
+          <FooterLink href={PRIVACY_URL}>Privacy</FooterLink>
+          <FooterLink href={NOTICE_URL}>Notice</FooterLink>
+        </div>
       </div>
       <footer className="border-t border-white/10 bg-[#1a1a19] px-6 py-2.5 text-white sm:px-10">
         <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between gap-4">
@@ -46,6 +60,19 @@ export function Footer() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function FooterLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="transition-colors hover:text-[var(--color-text)]"
+    >
+      {children}
+    </a>
   );
 }
 
