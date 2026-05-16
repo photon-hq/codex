@@ -9,7 +9,7 @@ const NOTICE_URL = "https://github.com/photon-hq/codex/blob/main/docs/NOTICE.md"
 
 export function Footer() {
   return (
-    <div className="relative z-10 mt-auto flex w-full flex-col">
+    <div className="relative z-10 mt-auto flex w-full flex-col after:absolute after:top-full after:right-0 after:left-0 after:h-[100lvh] after:bg-[#1a1a19] after:content-['']">
       <div className="flex w-full items-center justify-center px-6 py-3 sm:px-10 sm:py-4">
         <a
           aria-label="View on GitHub"
