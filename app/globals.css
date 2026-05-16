@@ -50,12 +50,10 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: var(--color-text);
-    /* Split background so Safari's elastic overscroll shows lavender gradient
-       at the top (matching hero) and footer-dark at the bottom (matching footer).
-       The middle is irrelevant — body covers it with the live gradient + video. */
-    background-color: #1a1a19;
-    background-image: linear-gradient(to bottom, #b9b2ff 0%, #b9b2ff 50%, #1a1a19 50%, #1a1a19 100%);
-    background-attachment: fixed;
+    /* Match Safari chrome (top notch + bottom toolbar overscroll) to the dark
+       footer color so the live gradient/video center floats cleanly between
+       two matching strips instead of clashing with lavender. */
+    background: #1a1a19;
     text-rendering: optimizeSpeed;
   }
 
