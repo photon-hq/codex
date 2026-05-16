@@ -315,7 +315,11 @@ export class TenantWorker {
           reply.pull_request_url,
           prepared.unsupportedAttachments,
         );
-        await m.reply(composed.text);
+        const [firstChunk, ...restChunks] = composed.chunks;
+        if (firstChunk !== undefined) await m.reply(firstChunk);
+        for (const chunk of restChunks) {
+          await space.send(chunk);
+        }
         if (composed.prUrl) {
           await space.send(richlink(composed.prUrl));
         }
@@ -327,7 +331,8 @@ export class TenantWorker {
           status: reply.status,
           inLen: inputText.length,
           imageCount: prepared.images.length,
-          outLen: composed.text.length,
+          outLen: composed.chunks.reduce((n, c) => n + c.length, 0),
+          chunkCount: composed.chunks.length,
           latencyMs: Date.now() - started,
         });
       });
@@ -711,23 +716,54 @@ function composeReply(
   error: string | null,
   prUrl: string | null,
   unsupportedAttachments: number,
-): { text: string; prUrl: string | null } {
-  const parts: string[] = [];
-  if (text) parts.push(text);
-  if (error) parts.push(`Codex error: ${error}`);
-  if (prUrl) parts.push("PR opened — link to follow.");
+): { chunks: string[]; prUrl: string | null } {
+  const chunks: string[] = [];
+  if (text) chunks.push(...splitIntoBubbles(text));
+  if (error) chunks.push(`Codex error: ${error}`);
+  if (prUrl) chunks.push("PR opened — link to follow.");
   if (unsupportedAttachments > 0) {
-    parts.push(
+    chunks.push(
       unsupportedAttachments === 1
         ? "(One attachment was skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)"
         : `(${unsupportedAttachments} attachments were skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)`,
     );
   }
-  const body =
-    parts.length === 0
-      ? "Codex returned an empty reply. Try again or send /new."
-      : parts.join("\n\n");
-  return { text: body, prUrl };
+  if (chunks.length === 0) {
+    chunks.push("Codex returned an empty reply. Try again or send /new.");
+  }
+  return { chunks, prUrl };
+}
+
+// Split a model reply into iMessage-sized bubbles on blank-line paragraph breaks,
+// but keep fenced ```code``` blocks intact so we don't shatter a snippet across
+// multiple bubbles.
+function splitIntoBubbles(raw: string): string[] {
+  const text = raw.trim();
+  if (!text) return [];
+  const FENCE = /```[\s\S]*?(?:```|$)/g;
+  const tokens: Array<{ kind: "fence" | "prose"; text: string }> = [];
+  let cursor = 0;
+  for (const match of text.matchAll(FENCE)) {
+    const start = match.index ?? 0;
+    if (start > cursor) tokens.push({ kind: "prose", text: text.slice(cursor, start) });
+    tokens.push({ kind: "fence", text: match[0] });
+    cursor = start + match[0].length;
+  }
+  if (cursor < text.length) tokens.push({ kind: "prose", text: text.slice(cursor) });
+
+  const bubbles: string[] = [];
+  for (const tok of tokens) {
+    if (tok.kind === "fence") {
+      const trimmed = tok.text.trim();
+      if (trimmed) bubbles.push(trimmed);
+      continue;
+    }
+    for (const piece of tok.text.split(/\n{2,}/)) {
+      const trimmed = piece.trim();
+      if (trimmed) bubbles.push(trimmed);
+    }
+  }
+  return bubbles;
 }
 
 function friendlyError(err: unknown): string {
