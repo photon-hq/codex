@@ -5,7 +5,7 @@ import OnboardClient from "./onboard-client";
 export default function OnboardPage() {
   return (
     <>
-      <TopNav left={<BackHomePill />} />
+      <TopNav left={<BackHomePill />} right={<span />} />
       <PageShell contentClassName="justify-center">
         <Suspense
           fallback={
