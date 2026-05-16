@@ -17,7 +17,9 @@ const geistMono = Geist_Mono({
   display: "swap",
 });
 
-const SITE_URL = process.env.PUBLIC_URL ?? "http://localhost:3000";
+const SITE_URL =
+  process.env.PUBLIC_URL ??
+  (process.env.NODE_ENV === "production" ? "https://codex.pho.town" : "http://localhost:3000");
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
