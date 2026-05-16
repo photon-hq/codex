@@ -1,14 +1,13 @@
 "use client";
 
-import { BackHomePill, CodexIcon, TopNav } from "@/components/chrome";
 import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { BackHomePill, CodexIcon, PageShell, TopNav } from "@/components/chrome";
 
 interface Me {
   provisioned: boolean;
-  user?: { id: string; email?: string | null; name?: string | null };
   tenant?: {
     phoneNumber: string;
     redirectUri: string | null;
@@ -19,6 +18,7 @@ interface Me {
     status: string;
     createdAt: string;
   };
+  user?: { id: string; email?: string | null; name?: string | null };
 }
 
 export default function DashboardClient() {
@@ -37,7 +37,7 @@ export default function DashboardClient() {
         return;
       }
       const data = (await res.json()) as Me;
-      if (!data.provisioned || !data.tenant?.codexLinked) {
+      if (!(data.provisioned && data.tenant?.codexLinked)) {
         router.replace("/onboard");
         return;
       }
@@ -58,9 +58,13 @@ export default function DashboardClient() {
   const tenantHref = me?.tenant ? (me.tenant.redirectUri ?? `sms:${me.tenant.phoneNumber}`) : null;
 
   useEffect(() => {
-    if (!tenantHref) return;
+    if (!tenantHref) {
+      return;
+    }
     try {
-      if (window.sessionStorage.getItem("codex.imessageOpened") === "1") return;
+      if (window.sessionStorage.getItem("codex.imessageOpened") === "1") {
+        return;
+      }
       window.sessionStorage.setItem("codex.imessageOpened", "1");
     } catch {
       // sessionStorage might be unavailable; fall through and open once.
@@ -94,56 +98,52 @@ export default function DashboardClient() {
 
   if (loading) {
     return (
-      <main className="relative flex flex-1 flex-col">
-        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-4 pb-16 pt-6 sm:px-8 sm:pb-20 sm:pt-10">
-          <div className="flex w-full max-w-[520px] flex-col items-center text-center">
-            <div className="skeleton-chip" aria-hidden />
-            <div className="skeleton-line mt-6 w-[40%]" aria-hidden />
-            <div className="skeleton-line mt-3 w-[70%] h-7" aria-hidden />
-            <div className="skeleton-line mt-7 w-[50%]" aria-hidden />
-            <div className="mt-12 grid w-full grid-cols-2 gap-3">
-              <div className="skeleton-card" aria-hidden />
-              <div className="skeleton-card" aria-hidden />
-            </div>
-            <div className="sr-only">Loading dashboard</div>
-          </div>
+      <PageShell contentClassName="justify-center">
+        <div className="flex w-full max-w-[480px] flex-col items-center text-center">
+          <div aria-hidden className="skeleton-chip" />
+          <div aria-hidden className="skeleton-line mt-6 w-[40%]" />
+          <div aria-hidden className="skeleton-line mt-3 h-7 w-[70%]" />
+          <div aria-hidden className="skeleton-line mt-7 w-[50%]" />
+          <div className="sr-only">Loading dashboard</div>
         </div>
-      </main>
+      </PageShell>
     );
   }
-  if (!me?.tenant) return null;
+  if (!me?.tenant) {
+    return null;
+  }
 
   const t = me.tenant;
 
   return (
     <>
       <TopNav left={<BackHomePill />} right={<span />} />
-      <main className="relative flex flex-1 flex-col">
-        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-5 pb-10 pt-10 sm:px-8 sm:pt-16">
-          <div className="flex w-full max-w-[480px] flex-col items-center text-center">
+      <PageShell contentClassName="justify-center">
+        <div className="flex w-full max-w-[480px] flex-col items-center gap-10 text-center">
+          <div className="flex w-full flex-col items-center">
             <div className="fade-up fade-up-2">
-              <CodexIcon size="clamp(52px, 6vw, 60px)" radius="16px" />
+              <CodexIcon radius="16px" size="clamp(52px, 6vw, 60px)" />
             </div>
 
-            <h1 className="fade-up fade-up-4 mt-6 font-mono text-[clamp(32px,5.2vw,44px)] font-medium leading-none tracking-[-0.02em] text-[var(--color-text)]">
+            <h1 className="fade-up fade-up-4 mt-6 font-medium font-mono text-[clamp(32px,5.2vw,44px)] text-[var(--color-text)] leading-none tracking-[-0.02em]">
               <CopyableNumber number={t.phoneNumber} />
             </h1>
 
-            <p className="fade-up fade-up-5 mt-4 max-w-[34ch] text-[14px] leading-snug text-[var(--color-text-muted)]">
+            <p className="fade-up fade-up-5 mt-4 max-w-[34ch] text-[14px] text-[var(--color-text-muted)] leading-snug">
               Opening iMessage now. If your browser blocked the jump, text this number manually from
               the Messages app — Codex replies in the same thread.
             </p>
 
             {!t.codexEnvironmentId && (
-              <div className="fade-up fade-up-7 mt-10 w-full rounded-[12px] border border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_8%,white)] px-4 py-3 text-left">
-                <p className="text-[13px] leading-snug text-[var(--color-text-muted)]">
+              <div className="fade-up fade-up-7 mt-8 w-full rounded-[12px] border border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_8%,white)] px-4 py-3 text-left">
+                <p className="text-[13px] text-[var(--color-text-muted)] leading-snug">
                   <span className="font-medium text-[var(--color-text)]">Connect a repo.</span>{" "}
                   Codex needs a GitHub repo &mdash;{" "}
                   <a
-                    href="https://chatgpt.com/codex/settings/environments"
-                    target="_blank"
-                    rel="noreferrer"
                     className="underline underline-offset-2"
+                    href="https://chatgpt.com/codex/settings/environments"
+                    rel="noreferrer"
+                    target="_blank"
                   >
                     add one
                   </a>{" "}
@@ -153,41 +153,41 @@ export default function DashboardClient() {
             )}
           </div>
 
-          <div className="fade-up fade-up-7 mt-auto flex w-full items-center justify-center pt-12">
-            {!confirmDisconnect ? (
-              <button
-                type="button"
-                onClick={() => setConfirmDisconnect(true)}
-                className="btn-pill-primary inline-flex items-center justify-center"
-              >
-                Disconnect
-                <Trash2 size={14} className="ml-1.5" />
-              </button>
-            ) : (
+          <div className="fade-up fade-up-7 flex w-full items-center justify-center">
+            {confirmDisconnect ? (
               <div className="inline-flex items-center gap-3">
                 <button
-                  type="button"
-                  onClick={disconnect}
-                  disabled={disconnecting}
                   className="btn-pill-primary inline-flex items-center justify-center disabled:cursor-progress"
+                  disabled={disconnecting}
+                  onClick={disconnect}
+                  type="button"
                 >
-                  {disconnecting ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+                  {disconnecting ? <Loader2 className="mr-1.5 animate-spin" size={14} /> : null}
                   {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
-                  {!disconnecting && <Trash2 size={14} className="ml-1.5" />}
+                  {!disconnecting && <Trash2 className="ml-1.5" size={14} />}
                 </button>
                 <button
-                  type="button"
-                  onClick={() => setConfirmDisconnect(false)}
+                  className="font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em] hover:text-[var(--color-text)] disabled:opacity-60"
                   disabled={disconnecting}
-                  className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60"
+                  onClick={() => setConfirmDisconnect(false)}
+                  type="button"
                 >
                   Cancel
                 </button>
               </div>
+            ) : (
+              <button
+                className="btn-pill-primary inline-flex items-center justify-center"
+                onClick={() => setConfirmDisconnect(true)}
+                type="button"
+              >
+                Disconnect
+                <Trash2 className="ml-1.5" size={14} />
+              </button>
             )}
           </div>
         </div>
-      </main>
+      </PageShell>
     </>
   );
 }
@@ -196,7 +196,8 @@ function CopyableNumber({ number }: { number: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      type="button"
+      aria-label="Copy phone number"
+      className="group inline-flex items-baseline gap-2 outline-none transition-opacity hover:opacity-85 focus-visible:opacity-85"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(number);
@@ -206,14 +207,13 @@ function CopyableNumber({ number }: { number: string }) {
           toast.error("Couldn't copy", { description: "Clipboard access was denied." });
         }
       }}
-      className="group inline-flex items-baseline gap-2 outline-none transition-opacity hover:opacity-85 focus-visible:opacity-85"
-      aria-label="Copy phone number"
+      type="button"
     >
       <span>{number}</span>
       <span
         className={`self-center text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
       >
-        {copied ? <Check size={14} className="text-[var(--color-success)]" /> : <Copy size={14} />}
+        {copied ? <Check className="text-[var(--color-success)]" size={14} /> : <Copy size={14} />}
       </span>
     </button>
   );
