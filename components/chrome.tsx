@@ -63,7 +63,7 @@ export function BrandLink() {
 export function BackHomePill() {
   return (
     <Link
-      className="btn-pill-secondary nav-link inline-flex items-center gap-1.5"
+      className="btn-pill-glass nav-link inline-flex items-center gap-1.5"
       href="/"
       style={{ padding: "0.4375rem 0.875rem 0.4375rem 0.75rem", fontSize: "13px" }}
     >
