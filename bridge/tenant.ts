@@ -717,8 +717,9 @@ export class TenantWorker {
     } catch (err) {
       if (err instanceof CodexCloudError && err.status === 403 && isMfaRequired(err)) {
         console.warn(
-          `[tenant ${this.tenant.id}] codex MFA-blocked — linked ChatGPT account has 2FA enabled; ` +
-            `device-auth tokens can't satisfy Wham API policy. Tenant must disable 2FA and re-link.`
+          `[tenant ${this.tenant.id}] codex MFA-blocked — device-code token lacks MFA claim. ` +
+            `Tenant must enable MFA AND "device code login" in chatgpt.com Settings → Security, ` +
+            `then re-link Codex. (Workspace accounts may also need admin to allow device-code.)`
         );
       } else {
         console.error(`[tenant ${this.tenant.id}] codex error:`, err);
@@ -1269,11 +1270,11 @@ function friendlyError(err: unknown): string {
   if (err instanceof CodexCloudError) {
     if (err.status === 403 && isMfaRequired(err)) {
       return (
-        "I can't reach Codex on this number because the linked ChatGPT account " +
-        "has multi-factor authentication enabled, which the current sign-in " +
-        "flow doesn't support yet. The developer who set up this line needs to " +
-        "disable 2FA on their ChatGPT account (chatgpt.com → Settings → " +
-        "Security) and re-link Codex from the dashboard."
+        "Codex says this account needs multi-factor authentication enabled before it " +
+        "will accept device-code logins. On the ChatGPT account linked to this number, " +
+        "go to chatgpt.com → Settings → Security and (1) enable MFA, and (2) enable " +
+        "“device code login”. Then re-link Codex from the dashboard. If the account is " +
+        "part of a ChatGPT workspace, an admin may also need to allow device-code login."
       );
     }
     if (err.status === 401) {
