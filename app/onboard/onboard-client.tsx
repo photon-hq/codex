@@ -6,17 +6,7 @@ import {
   isValidPhoneNumber,
   parsePhoneNumberFromString,
 } from "libphonenumber-js";
-import {
-  AlertCircle,
-  ArrowRight,
-  Check,
-  Copy,
-  ExternalLink,
-  Loader2,
-  MessageSquare,
-  Trash2,
-} from "lucide-react";
-import Link from "next/link";
+import { AlertCircle, ArrowRight, Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -42,11 +32,6 @@ interface SpectrumDeviceState {
   verification_uri_complete: string | null;
 }
 
-interface TenantState {
-  phoneNumber: string;
-  redirectUri: string | null;
-}
-
 const STEP_INDEX: Record<Stage, number> = {
   codex: 0,
   "codex-device": 0,
@@ -67,7 +52,6 @@ export default function OnboardClient() {
     null
   );
   const [spectrumDevice, setSpectrumDevice] = useState<SpectrumDeviceState | null>(null);
-  const [tenant, setTenant] = useState<TenantState | null>(null);
   const [busy, setBusy] = useState(false);
   const [showDeviceAuthHint, setShowDeviceAuthHint] = useState(false);
 
@@ -84,16 +68,19 @@ export default function OnboardClient() {
           return;
         }
         if (data.provisioned) {
-          setTenant({
-            phoneNumber: data.tenant.phoneNumber,
-            redirectUri: data.tenant.redirectUri ?? null,
-          });
           setStage("codex");
         }
         setBootstrapped(true);
       })
       .catch(() => setBootstrapped(true));
   }, [router]);
+
+  useEffect(() => {
+    if (stage !== "done") {
+      return;
+    }
+    router.replace("/dashboard");
+  }, [stage, router]);
 
   const beginCodex = useCallback(async () => {
     setBusy(true);
@@ -301,11 +288,7 @@ export default function OnboardClient() {
         }
         throw new Error(body.error ?? `provision failed (${res.status})`);
       }
-      const data = await res.json();
-      setTenant({
-        phoneNumber: data.phoneNumber,
-        redirectUri: data.redirectUri ?? null,
-      });
+      await res.json();
       setStage("done");
     } catch (err) {
       toast.error("Couldn't provision", {
@@ -353,7 +336,6 @@ export default function OnboardClient() {
           showDeviceAuthHint={showDeviceAuthHint}
           spectrumDevice={spectrumDevice}
           stage={stage}
-          tenant={tenant}
           userPhone={userPhone}
         />
       </div>
@@ -420,7 +402,6 @@ interface StageContentProps {
   showDeviceAuthHint: boolean;
   spectrumDevice: SpectrumDeviceState | null;
   stage: Stage;
-  tenant: TenantState | null;
   userPhone: string;
 }
 
@@ -431,7 +412,6 @@ function StageContent({
   codexDevice,
   codexUser,
   spectrumDevice,
-  tenant,
   userPhone,
   setUserPhone,
   onPhoneSubmit,
@@ -488,13 +468,10 @@ function StageContent({
     case "done":
       return (
         <>
-          <h1 className="section-title fade-up fade-up-4 mt-4">Opening iMessage&hellip;</h1>
+          <h1 className="section-title fade-up fade-up-4 mt-4">All set</h1>
           <p className="body-muted fade-up fade-up-5 mt-2 max-w-[24rem] text-balance">
-            Bring Codex to your favorite thread &mdash; we&rsquo;re starting iMessage for you now.
+            Taking you to your dashboard&hellip;
           </p>
-          {tenant && (
-            <DonePanel phoneNumber={tenant.phoneNumber} redirectUri={tenant.redirectUri} />
-          )}
         </>
       );
   }
@@ -826,143 +803,5 @@ function DeviceCardLayout({
         </button>
       </div>
     </div>
-  );
-}
-
-function DonePanel({
-  phoneNumber,
-  redirectUri,
-}: {
-  phoneNumber: string;
-  redirectUri: string | null;
-}) {
-  const router = useRouter();
-  const [copied, setCopied] = useState(false);
-  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
-  const [disconnecting, setDisconnecting] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(phoneNumber);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Couldn't copy", { description: "Clipboard access was denied." });
-    }
-  };
-
-  const openImessage = useCallback(() => {
-    if (!redirectUri) {
-      return;
-    }
-    window.location.href = redirectUri;
-  }, [redirectUri]);
-
-  useEffect(() => {
-    if (!redirectUri) {
-      return;
-    }
-    const t = window.setTimeout(openImessage, 400);
-    return () => window.clearTimeout(t);
-  }, [redirectUri, openImessage]);
-
-  const disconnect = async () => {
-    setDisconnecting(true);
-    try {
-      const res = await fetch("/api/tenant/disconnect", { method: "POST" });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `disconnect failed (${res.status})`);
-      }
-      toast.success("Disconnected", {
-        description: "Your iMessage line and ChatGPT link have been removed.",
-      });
-      router.replace("/onboard");
-    } catch (err) {
-      toast.error("Couldn't disconnect", {
-        description: err instanceof Error ? err.message : "disconnect failed",
-      });
-      setDisconnecting(false);
-      setConfirmDisconnect(false);
-    }
-  };
-
-  return (
-    <>
-      <button
-        aria-label="Copy phone number"
-        className="fade-up fade-up-6 group mt-7 inline-flex items-baseline gap-2 font-medium font-mono text-[clamp(32px,5.2vw,44px)] text-[var(--color-text)] leading-none tracking-[-0.02em] outline-none transition-opacity hover:opacity-85"
-        onClick={copy}
-        type="button"
-      >
-        <span>{phoneNumber}</span>
-        <span
-          className={`self-center text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
-        >
-          {copied ? (
-            <Check className="text-[var(--color-success)]" size={14} />
-          ) : (
-            <Copy size={14} />
-          )}
-        </span>
-      </button>
-      <div className="fade-up fade-up-7 mt-8 flex w-full max-w-[28rem] flex-col items-center gap-3 text-center">
-        <p className="text-[13.5px] text-[var(--color-text-muted)] leading-snug">
-          Sometimes your browser blocks the jump to iMessage. If nothing opened in a moment, text{" "}
-          <span className="font-medium text-[var(--color-text)]">{phoneNumber}</span> manually from
-          the Messages app to start the thread.
-        </p>
-        {redirectUri && (
-          <button
-            className="inline-flex items-center gap-1.5 font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em] hover:text-[var(--color-text)]"
-            onClick={openImessage}
-            type="button"
-          >
-            <MessageSquare size={12} /> Try opening iMessage again
-          </button>
-        )}
-        <Link
-          className="font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em] hover:text-[var(--color-text)]"
-          href="/dashboard"
-        >
-          Go to dashboard &rarr;
-        </Link>
-      </div>
-      <div className="fade-up fade-up-7 mt-10 flex w-full max-w-[24rem] items-center justify-center gap-x-5 border-[var(--color-border)] border-t pt-6 font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em]">
-        {confirmDisconnect ? (
-          <span className="inline-flex items-center gap-x-5">
-            <button
-              className="inline-flex items-center gap-1.5 font-semibold text-[var(--color-danger)] hover:opacity-80 disabled:opacity-60"
-              disabled={disconnecting}
-              onClick={disconnect}
-              type="button"
-            >
-              {disconnecting ? (
-                <Loader2 className="animate-spin" size={12} />
-              ) : (
-                <Trash2 size={12} />
-              )}
-              {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
-            </button>
-            <button
-              className="hover:text-[var(--color-text)]"
-              disabled={disconnecting}
-              onClick={() => setConfirmDisconnect(false)}
-              type="button"
-            >
-              Cancel
-            </button>
-          </span>
-        ) : (
-          <button
-            className="inline-flex items-center gap-1.5 text-[var(--color-danger)] hover:opacity-80"
-            onClick={() => setConfirmDisconnect(true)}
-            type="button"
-          >
-            <Trash2 size={12} /> Disconnect
-          </button>
-        )}
-      </div>
-    </>
   );
 }
