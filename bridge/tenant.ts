@@ -26,10 +26,14 @@ const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
-// Hold incoming non-command messages briefly so an image + caption (which
-// iMessage delivers as two separate bubbles) reach Codex as a single task.
-const BATCH_DEBOUNCE_MS = 1500;
-const BATCH_MAX_MS = 8_000;
+// Hold incoming non-command messages so an image + caption (which iMessage
+// delivers as two separate bubbles) reach Codex as a single task. 5 seconds
+// mirrors the debounce window Photon recommends in
+// https://docs.photon.codes/best-practices/inbound-pipeline — long enough to
+// capture real human bursts, short enough that the user doesn't think Codex
+// stalled.
+const BATCH_DEBOUNCE_MS = 5_000;
+const BATCH_MAX_MS = 20_000;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
   "image/jpeg",
@@ -388,6 +392,9 @@ export class TenantWorker {
       flushing: false,
     };
     this.pendingBatches.set(space.id, batch);
+    // Signal we've received them and are holding for the burst to settle.
+    // Without this, a 5s debounce feels like Codex stalled.
+    space.startTyping().catch(() => {});
   }
 
   private flushBatchNow(spaceId: string) {
@@ -434,6 +441,7 @@ export class TenantWorker {
     const mergedText = texts.join("\n\n").trim();
     const voiceOnly = batch.voiceCount > 0 && !mergedText && images.length === 0;
     if (voiceOnly) {
+      space.stopTyping().catch(() => {});
       await headM.reply(
         "Voice notes aren't supported yet — send the same idea as text or a screenshot and I'll take it from there.",
       );
@@ -444,7 +452,10 @@ export class TenantWorker {
       return;
     }
 
-    if (!mergedText && images.length === 0) return;
+    if (!mergedText && images.length === 0) {
+      space.stopTyping().catch(() => {});
+      return;
+    }
 
     const started = Date.now();
     try {
