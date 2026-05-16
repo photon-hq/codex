@@ -129,6 +129,11 @@ export async function POST(req: Request) {
       );
     }
 
+    console.log(
+      `[provision] user=${session.user.id} existingTenants=${existing.length} ` +
+        `upstreamProjects=${upstreamProjects ? upstreamProjects.length : "errored"}`
+    );
+
     if (existing.length > 0) {
       const t = existing[0];
       let stillExists = true;
@@ -138,7 +143,21 @@ export async function POST(req: Request) {
             (p.spectrumProjectId && p.spectrumProjectId === t.spectrumProjectId) ||
             p.id === t.spectrumProjectId
         );
+        if (!stillExists) {
+          const upstreamIds = upstreamProjects
+            .map((p) => `${p.id}${p.spectrumProjectId ? `(spId=${p.spectrumProjectId})` : ""}`)
+            .join(",");
+          console.warn(
+            `[provision] existing tenant ${t.id} references project ${t.spectrumProjectId} ` +
+              `but upstream returned: ${upstreamIds || "(empty list)"}`
+          );
+        }
       }
+      console.log(
+        `[provision] existing tenant ${t.id} (${t.phoneNumber}) project=${t.spectrumProjectId} ` +
+          `stillExists=${stillExists} listProjectsErrored=${listProjectsErrored} ` +
+          `→ ${stillExists || listProjectsErrored ? "KEEP" : "DELETE+RE-PROVISION"}`
+      );
 
       if (stillExists || listProjectsErrored) {
         const refreshBlob = encrypt(freshTokens.refresh_token);
@@ -300,6 +319,11 @@ export async function POST(req: Request) {
       .returning();
 
     jar.delete("codex_pending_tokens");
+
+    console.log(
+      `[provision] inserted tenant ${row.id} (${row.phoneNumber}) project=${row.spectrumProjectId} ` +
+        `— bridge will pick up on next sync (≤${process.env.BRIDGE_POLL_INTERVAL_MS ?? "10000"}ms)`
+    );
 
     return NextResponse.json({
       status: "created",

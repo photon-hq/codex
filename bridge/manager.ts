@@ -68,12 +68,36 @@ export class BridgeManager {
     const db = getDb();
     const rows = await db.select().from(tenants);
     const seenIds = new Set<string>();
+    const phonesByTenant = new Map<string, string>();
+    for (const row of rows) {
+      phonesByTenant.set(row.id, row.phoneNumber);
+    }
+    const beforeIds = Array.from(this.workers.keys());
+    const newIds = rows.filter((r) => !this.workers.has(r.id)).map((r) => r.id);
+    const goneIds = beforeIds.filter((id) => !rows.some((r) => r.id === id));
+    if (newIds.length > 0 || goneIds.length > 0) {
+      console.log(
+        `[bridge sync] before=${beforeIds.length} db=${rows.length} +${newIds.length} -${goneIds.length} ` +
+          `(new=${newIds.join(",") || "-"}, gone=${goneIds.join(",") || "-"})`
+      );
+    }
+
     for (const row of rows) {
       seenIds.add(row.id);
       const existing = this.workers.get(row.id);
       if (existing) {
         existing.refresh(row);
         continue;
+      }
+      const dupes = Array.from(this.workers.values()).filter(
+        (w) => w.health().phoneNumber === row.phoneNumber
+      );
+      if (dupes.length > 0) {
+        console.warn(
+          `[bridge sync] new tenant ${row.id} shares phone ${row.phoneNumber} with existing tenant(s): ` +
+            dupes.map((d) => d.id).join(",") +
+            " — both will be subscribed until the stale row is deleted"
+        );
       }
       const worker = new TenantWorker(row);
       this.workers.set(row.id, worker);
@@ -82,9 +106,11 @@ export class BridgeManager {
     }
     for (const [id, worker] of this.workers) {
       if (!seenIds.has(id)) {
+        const phone = worker.health().phoneNumber;
+        console.log(`[bridge] -tenant ${id} (${phone}) — DB row gone, stopping worker`);
         await worker.stop();
         this.workers.delete(id);
-        console.log(`[bridge] -tenant ${id}`);
+        console.log(`[bridge] -tenant ${id} stopped`);
       }
     }
     this.lastSyncAt = Date.now();

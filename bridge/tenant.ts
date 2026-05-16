@@ -170,12 +170,19 @@ export class TenantWorker {
     if (this.running) {
       return;
     }
+    console.log(
+      `[tenant ${this.tenant.id}] worker.start (${this.tenant.phoneNumber}) project=${this.tenant.spectrumProjectId}`
+    );
     this.running = true;
     this.stopRequested = false;
     void this.loop();
   }
 
   async stop() {
+    const wasSubscribed = this.subscribed;
+    console.log(
+      `[tenant ${this.tenant.id}] worker.stop requested (${this.tenant.phoneNumber}) subscribed=${wasSubscribed}`
+    );
     this.stopRequested = true;
     this.running = false;
     for (const batch of this.pendingBatches.values()) {
@@ -186,9 +193,15 @@ export class TenantWorker {
     if (this.app) {
       try {
         await this.app.stop();
-      } catch {}
+      } catch (err) {
+        console.warn(
+          `[tenant ${this.tenant.id}] app.stop threw during worker.stop:`,
+          err instanceof Error ? err.message : err
+        );
+      }
       this.app = null;
     }
+    console.log(`[tenant ${this.tenant.id}] worker.stop complete (${this.tenant.phoneNumber})`);
   }
 
   refresh(next: Tenant) {
@@ -283,9 +296,12 @@ export class TenantWorker {
       });
     }, STALE_DISPATCH_MS + 1000);
 
+    let streamEndReason: "stop_requested" | "iterator_returned" | "iterator_threw" =
+      "iterator_returned";
     try {
       for await (const [space, message] of app.messages) {
         if (this.stopRequested) {
+          streamEndReason = "stop_requested";
           break;
         }
         this.messagesHandled += 1;
@@ -294,6 +310,12 @@ export class TenantWorker {
           console.error(`[tenant ${this.tenant.id}] handler error:`, err);
         });
       }
+    } catch (err) {
+      streamEndReason = "iterator_threw";
+      console.warn(
+        `[tenant ${this.tenant.id}] message iterator threw (${this.tenant.phoneNumber}):`,
+        err instanceof Error ? err.message : err
+      );
     } finally {
       this.subscribed = false;
       try {
@@ -302,13 +324,20 @@ export class TenantWorker {
       if (this.app === app) {
         this.app = null;
       }
-      console.warn(`[tenant ${this.tenant.id}] message stream ended — will reconnect`);
+      console.warn(
+        `[tenant ${this.tenant.id}] message stream ended reason=${streamEndReason} ` +
+          `(${this.tenant.phoneNumber}) project=${this.tenant.spectrumProjectId} — will reconnect`
+      );
     }
   }
 
   private async handle(space: Space<unknown>, message: Message) {
     const m = message as ReplyableMessage;
     const top = m.content as MessageContent;
+    console.log(
+      `[tenant ${this.tenant.id}] inbound (${this.tenant.phoneNumber}) space=${space.id} ` +
+        `type=${top?.type ?? "unknown"} sender=${m.sender?.id ?? "?"}`
+    );
 
     // Flatten effect-wrapped and grouped messages so each leaf content gets
     // routed individually. iMessage occasionally delivers a screen effect
