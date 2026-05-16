@@ -22,7 +22,7 @@ export function Footer() {
           View on GitHub
         </a>
       </div>
-      <footer className="border-white/10 border-t bg-[#1a1a19] px-5 py-2.5 text-white sm:px-10">
+      <footer className="border-white/10 border-t bg-[#1a1a19] px-5 pt-2.5 pb-[max(env(safe-area-inset-bottom),0.625rem)] text-white sm:px-10 sm:pb-2.5">
         <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between gap-4 sm:grid sm:grid-cols-[1fr_auto_1fr]">
           <a
             aria-label="Powered by photon"
