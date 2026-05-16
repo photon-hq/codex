@@ -715,7 +715,14 @@ export class TenantWorker {
         });
       });
     } catch (err) {
-      console.error(`[tenant ${this.tenant.id}] codex error:`, err);
+      if (err instanceof CodexCloudError && err.status === 403 && isMfaRequired(err)) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex MFA-blocked — linked ChatGPT account has 2FA enabled; ` +
+            `device-auth tokens can't satisfy Wham API policy. Tenant must disable 2FA and re-link.`
+        );
+      } else {
+        console.error(`[tenant ${this.tenant.id}] codex error:`, err);
+      }
       const errorText =
         err instanceof CodexCloudError && err.status === 412
           ? "Connect a GitHub repo to Codex before texting — I need an environment to run in."
@@ -1260,6 +1267,15 @@ function stripProseMarkdown(input: string): string {
 
 function friendlyError(err: unknown): string {
   if (err instanceof CodexCloudError) {
+    if (err.status === 403 && isMfaRequired(err)) {
+      return (
+        "I can't reach Codex on this number because the linked ChatGPT account " +
+        "has multi-factor authentication enabled, which the current sign-in " +
+        "flow doesn't support yet. The developer who set up this line needs to " +
+        "disable 2FA on their ChatGPT account (chatgpt.com → Settings → " +
+        "Security) and re-link Codex from the dashboard."
+      );
+    }
     if (err.status === 401) {
       return "ChatGPT session expired. Open the dashboard to sign in again.";
     }
@@ -1278,4 +1294,18 @@ function friendlyError(err: unknown): string {
     return "ChatGPT is rate-limiting Codex right now. Try again in a moment.";
   }
   return "Codex hit an error. Try again, or send /new to start a fresh thread.";
+}
+
+function isMfaRequired(err: CodexCloudError): boolean {
+  if (/multi.?factor|\bmfa\b|two.?factor|2fa/i.test(err.message)) {
+    return true;
+  }
+  const body = err.body;
+  if (body && typeof body === "object") {
+    const detail = (body as { detail?: unknown }).detail;
+    if (typeof detail === "string" && /multi.?factor|\bmfa\b/i.test(detail)) {
+      return true;
+    }
+  }
+  return false;
 }
