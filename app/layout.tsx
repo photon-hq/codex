@@ -1,8 +1,8 @@
-import { BackdropVideo } from "@/components/chrome";
-import { Footer } from "@/components/footer";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { BackdropVideo } from "@/components/chrome";
+import { Footer } from "@/components/footer";
 import "./globals.css";
 
 const geist = Geist({
@@ -42,31 +42,31 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable}`}>
+    <html className={`${geist.variable} ${geistMono.variable}`} lang="en">
       <head>
-        <link rel="preconnect" href="https://persistent.oaistatic.com" crossOrigin="anonymous" />
-        <link rel="dns-prefetch" href="https://persistent.oaistatic.com" />
+        <link crossOrigin="anonymous" href="https://persistent.oaistatic.com" rel="preconnect" />
+        <link href="https://persistent.oaistatic.com" rel="dns-prefetch" />
         <link
-          rel="preload"
           as="image"
-          href="https://persistent.oaistatic.com/codex/icon.png"
           fetchPriority="high"
+          href="https://persistent.oaistatic.com/codex/icon.png"
+          rel="preload"
         />
         <link
-          rel="preload"
           as="video"
-          href="https://persistent.oaistatic.com/codex/icon-gif.mp4"
-          type="video/mp4"
           crossOrigin="anonymous"
           fetchPriority="high"
+          href="https://persistent.oaistatic.com/codex/icon-gif.mp4"
+          rel="preload"
+          type="video/mp4"
         />
         <link
-          rel="preload"
           as="video"
-          href="https://persistent.oaistatic.com/codex/background-video-jan-28.mp4"
-          type="video/mp4"
           crossOrigin="anonymous"
           fetchPriority="low"
+          href="https://persistent.oaistatic.com/codex/background-video-jan-28.mp4"
+          rel="preload"
+          type="video/mp4"
         />
       </head>
       <body className="hero-bg relative min-h-dvh overflow-x-hidden">
@@ -76,11 +76,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Footer />
         </div>
         <Toaster
+          closeButton
+          duration={4500}
           position="top-center"
           richColors
-          closeButton
           theme="light"
-          duration={4500}
           toastOptions={{
             classNames: {
               toast:

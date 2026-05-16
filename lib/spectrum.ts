@@ -4,13 +4,17 @@ export const IMESSAGE_INTRO_BODY = "Hey! Tell me how to use codex in iMessage";
 
 function dashboardHost() {
   const h = process.env.SPECTRUM_API_HOST;
-  if (!h) throw new Error("SPECTRUM_API_HOST is not set");
+  if (!h) {
+    throw new Error("SPECTRUM_API_HOST is not set");
+  }
   return h.replace(/\/+$/, "");
 }
 
 function runtimeHost() {
   const explicit = process.env.SPECTRUM_RUNTIME_HOST;
-  if (explicit) return explicit.replace(/\/+$/, "");
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
   // Default to the public Spectrum cloud. Point SPECTRUM_RUNTIME_HOST at a
   // different deployment (e.g. your own staging cluster) to override.
   return "https://spectrum.photon.codes";
@@ -22,7 +26,9 @@ function basicAuth(projectId: string, projectSecret: string): string {
 
 function clientId() {
   const c = process.env.SPECTRUM_CLIENT_ID;
-  if (!c) throw new Error("SPECTRUM_CLIENT_ID is not set");
+  if (!c) {
+    throw new Error("SPECTRUM_CLIENT_ID is not set");
+  }
   return c;
 }
 
@@ -30,7 +36,7 @@ export class SpectrumError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly body: unknown,
+    readonly body: unknown
   ) {
     super(message);
     this.name = "SpectrumError";
@@ -39,7 +45,9 @@ export class SpectrumError extends Error {
 
 async function asJson(res: Response): Promise<unknown> {
   const txt = await res.text();
-  if (!txt) return null;
+  if (!txt) {
+    return null;
+  }
   try {
     return JSON.parse(txt);
   } catch {
@@ -63,7 +71,7 @@ async function expectOk<T>(res: Response, context: string): Promise<T> {
     throw new SpectrumError(
       `${context} failed: ${res.status} ${res.statusText}${suffix}`,
       res.status,
-      body,
+      body
     );
   }
   return (await asJson(res)) as T;
@@ -71,19 +79,19 @@ async function expectOk<T>(res: Response, context: string): Promise<T> {
 
 export interface DeviceCodeResponse {
   device_code: string;
+  expires_in: number;
+  interval: number;
   user_code: string;
   verification_uri: string;
   verification_uri_complete?: string;
-  interval: number;
-  expires_in: number;
 }
 
 export interface DeviceTokenSuccess {
   access_token: string;
-  token_type: string;
   expires_in?: number;
   refresh_token?: string;
   scope?: string;
+  token_type: string;
 }
 
 export type DeviceTokenError =
@@ -137,17 +145,17 @@ export async function pollDeviceToken(deviceCode: string): Promise<DeviceTokenRe
 }
 
 export interface SessionUser {
-  id: string;
   email?: string | null;
-  name?: string | null;
+  id: string;
   image?: string | null;
+  name?: string | null;
   phoneNumber?: string | null;
   [key: string]: unknown;
 }
 
 interface RawSessionEnvelope {
-  user?: Partial<SessionUser> & Record<string, unknown>;
   session?: { userId?: string; id?: string; [key: string]: unknown };
+  user?: Partial<SessionUser> & Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -155,10 +163,14 @@ export async function getSession(bearer: string): Promise<{ user: SessionUser } 
   const res = await fetch(`${dashboardHost()}/api/auth/get-session`, {
     headers: { authorization: `Bearer ${bearer}` },
   });
-  if (res.status === 401) return null;
+  if (res.status === 401) {
+    return null;
+  }
   const body = (await expectOk<RawSessionEnvelope>(res, "get-session")) ?? {};
   const rawUser = body.user;
-  if (!rawUser) return null;
+  if (!rawUser) {
+    return null;
+  }
 
   const id =
     (typeof rawUser.id === "string" && rawUser.id) ||
@@ -181,34 +193,34 @@ export async function getSession(bearer: string): Promise<{ user: SessionUser } 
 
 export async function checkPhoneAvailability(
   bearer: string,
-  phoneNumber: string,
+  phoneNumber: string
 ): Promise<{ available: boolean }> {
   const res = await fetch(
     `${dashboardHost()}/api/projects/check-availability?phoneNumber=${encodeURIComponent(phoneNumber)}`,
-    { headers: { authorization: `Bearer ${bearer}` } },
+    { headers: { authorization: `Bearer ${bearer}` } }
   );
   const body = await expectOk<{ available?: boolean }>(res, "check-phone-availability");
   return { available: !!body?.available };
 }
 
 export interface CreateProjectInput {
-  name: string;
   location?: string;
+  name: string;
+  observability?: boolean;
   spectrum?: boolean;
   template?: boolean;
-  observability?: boolean;
 }
 
 export interface CreateProjectResult {
-  success?: true;
+  error?: string;
   id?: string;
   spectrumProjectId?: string;
-  error?: string;
+  success?: true;
 }
 
 export async function createProject(
   bearer: string,
-  input: CreateProjectInput,
+  input: CreateProjectInput
 ): Promise<{ id: string }> {
   const res = await fetch(`${dashboardHost()}/api/projects`, {
     method: "POST",
@@ -225,16 +237,18 @@ export async function createProject(
     }),
   });
   const body = await expectOk<CreateProjectResult>(res, "create-project");
-  if (!body?.id) throw new SpectrumError("create-project returned no id", 500, body);
+  if (!body?.id) {
+    throw new SpectrumError("create-project returned no id", 500, body);
+  }
   return { id: body.id };
 }
 
 export interface ProjectDetails {
   id: string;
   name?: string;
+  projectSecret?: string | null;
   spectrum?: boolean;
   spectrumProjectId?: string | null;
-  projectSecret?: string | null;
   [key: string]: unknown;
 }
 
@@ -254,7 +268,7 @@ export async function listProjects(bearer: string): Promise<ProjectDetails[]> {
   } catch (err) {
     console.warn(
       "[spectrum] list-projects network error:",
-      err instanceof Error ? err.message : err,
+      err instanceof Error ? err.message : err
     );
     return [];
   }
@@ -263,31 +277,37 @@ export async function listProjects(bearer: string): Promise<ProjectDetails[]> {
     return [];
   }
   const body = (await asJson(res)) as unknown;
-  if (Array.isArray(body)) return body as ProjectDetails[];
+  if (Array.isArray(body)) {
+    return body as ProjectDetails[];
+  }
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    if (Array.isArray(b.projects)) return b.projects as ProjectDetails[];
-    if (Array.isArray(b.data)) return b.data as ProjectDetails[];
+    if (Array.isArray(b.projects)) {
+      return b.projects as ProjectDetails[];
+    }
+    if (Array.isArray(b.data)) {
+      return b.data as ProjectDetails[];
+    }
   }
   return [];
 }
 
 export interface RegenerateSecretResult {
-  success?: true;
-  projectSecret?: string;
   error?: string;
+  projectSecret?: string;
+  success?: true;
 }
 
 export async function regenerateProjectSecret(
   bearer: string,
-  projectId: string,
+  projectId: string
 ): Promise<{ projectSecret: string }> {
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/regenerate-secret`,
     {
       method: "POST",
       headers: { authorization: `Bearer ${bearer}` },
-    },
+    }
   );
   const body = await expectOk<RegenerateSecretResult>(res, "regenerate-secret");
   if (!body?.projectSecret) {
@@ -300,7 +320,7 @@ export async function togglePlatform(
   bearer: string,
   projectId: string,
   platformId: string,
-  enabled: boolean,
+  enabled: boolean
 ): Promise<void> {
   const res = await fetch(
     `${dashboardHost()}/api/projects/${encodeURIComponent(projectId)}/platforms/toggle`,
@@ -311,31 +331,31 @@ export async function togglePlatform(
         authorization: `Bearer ${bearer}`,
       },
       body: JSON.stringify({ platformId, enabled }),
-    },
+    }
   );
   await expectOk(res, `toggle-platform(${platformId}, ${enabled})`);
 }
 
 export interface ImessageTokensResponse {
-  type: "shared" | "dedicated";
-  token?: string;
   auth?: Record<string, string>;
-  numbers?: Record<string, string>;
   expiresIn?: number;
+  numbers?: Record<string, string>;
+  token?: string;
+  type: "shared" | "dedicated";
   [key: string]: unknown;
 }
 
 interface CloudEnvelope<T> {
-  succeed?: boolean;
-  data?: T;
   code?: string;
+  data?: T;
   message?: string;
+  succeed?: boolean;
 }
 
 async function cloudCall<T = unknown>(
   path: string,
   init: RequestInit,
-  context: string,
+  context: string
 ): Promise<T> {
   const res = await fetch(`${runtimeHost()}${path}`, init);
   const body = (await asJson(res)) as CloudEnvelope<T> | T | null;
@@ -345,7 +365,7 @@ async function cloudCall<T = unknown>(
     throw new SpectrumError(
       `${context} failed: ${res.status} ${res.statusText}${hint ? ` — ${hint}` : ""}`,
       res.status,
-      body,
+      body
     );
   }
   if (body && typeof body === "object" && "succeed" in body) {
@@ -354,17 +374,19 @@ async function cloudCall<T = unknown>(
       throw new SpectrumError(
         `${context} failed: ${envelope.message ?? "succeed=false"}`,
         500,
-        envelope,
+        envelope
       );
     }
-    if (envelope.data !== undefined) return envelope.data;
+    if (envelope.data !== undefined) {
+      return envelope.data;
+    }
   }
   return body as T;
 }
 
 export async function issueImessageTokens(
   projectId: string,
-  projectSecret: string,
+  projectSecret: string
 ): Promise<ImessageTokensResponse> {
   return cloudCall<ImessageTokensResponse>(
     `/projects/${encodeURIComponent(projectId)}/imessage/tokens`,
@@ -372,20 +394,20 @@ export async function issueImessageTokens(
       method: "POST",
       headers: { authorization: basicAuth(projectId, projectSecret) },
     },
-    "issue-imessage-tokens",
+    "issue-imessage-tokens"
   );
 }
 
 export async function getImessageInfo(
   projectId: string,
-  projectSecret: string,
+  projectSecret: string
 ): Promise<Record<string, unknown>> {
   return cloudCall<Record<string, unknown>>(
     `/projects/${encodeURIComponent(projectId)}/imessage/`,
     {
       headers: { authorization: basicAuth(projectId, projectSecret) },
     },
-    "get-imessage-info",
+    "get-imessage-info"
   );
 }
 
@@ -393,7 +415,7 @@ export async function cloudTogglePlatform(
   projectId: string,
   projectSecret: string,
   platform: "imessage" | "whatsapp_business",
-  enabled: boolean,
+  enabled: boolean
 ): Promise<void> {
   await cloudCall<Record<string, unknown>>(
     `/projects/${encodeURIComponent(projectId)}/platforms/`,
@@ -405,27 +427,27 @@ export async function cloudTogglePlatform(
       },
       body: JSON.stringify({ platform, enabled }),
     },
-    "cloud-toggle-platform",
+    "cloud-toggle-platform"
   );
 }
 
 export interface CloudProjectUser {
-  id?: string;
-  projectId?: string;
-  type?: "shared" | "dedicated";
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-  phoneNumber?: string | null;
   assignedPhoneNumber?: string | null;
   createdAt?: string;
+  email?: string | null;
+  firstName?: string | null;
+  id?: string;
+  lastName?: string | null;
+  phoneNumber?: string | null;
+  projectId?: string;
+  type?: "shared" | "dedicated";
   [key: string]: unknown;
 }
 
 export async function cloudCreateUser(
   projectId: string,
   projectSecret: string,
-  input: { phoneNumber: string },
+  input: { phoneNumber: string }
 ): Promise<CloudProjectUser> {
   return cloudCall<CloudProjectUser>(
     `/projects/${encodeURIComponent(projectId)}/users/`,
@@ -437,26 +459,28 @@ export async function cloudCreateUser(
       },
       body: JSON.stringify({ type: "shared", phoneNumber: input.phoneNumber }),
     },
-    "cloud-create-user",
+    "cloud-create-user"
   );
 }
 
 export async function listProjectUsers(
   projectId: string,
-  projectSecret: string,
+  projectSecret: string
 ): Promise<CloudProjectUser[]> {
   const body = await cloudCall<{ users?: CloudProjectUser[] } | CloudProjectUser[] | null>(
     `/projects/${encodeURIComponent(projectId)}/users/`,
     { headers: { authorization: basicAuth(projectId, projectSecret) } },
-    "list-project-users",
+    "list-project-users"
   );
-  if (Array.isArray(body)) return body;
+  if (Array.isArray(body)) {
+    return body;
+  }
   return body?.users ?? [];
 }
 
 export function imessageRedirectUrl(
   phoneNumber: string,
-  body: string = IMESSAGE_INTRO_BODY,
+  body: string = IMESSAGE_INTRO_BODY
 ): string {
   return createIMessageLink({ to: phoneNumber, body });
 }

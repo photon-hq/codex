@@ -1,8 +1,5 @@
 "use client";
 
-import { ChatGPTChip, CodexIcon, SpectrumChip } from "@/components/chrome";
-import { CountryDialPicker } from "@/components/country-dial-picker";
-import { type Country, DEFAULT_COUNTRY, findByIso } from "@/lib/country-codes";
 import {
   AsYouType,
   type CountryCode,
@@ -23,23 +20,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ChatGPTChip, CodexIcon, SpectrumChip } from "@/components/chrome";
+import { CountryDialPicker } from "@/components/country-dial-picker";
+import { type Country, DEFAULT_COUNTRY, findByIso } from "@/lib/country-codes";
 
 type Stage = "codex" | "codex-device" | "codex-success" | "spectrum-device" | "phone" | "done";
 
 interface CodexDeviceState {
-  user_code: string;
-  verification_url: string;
-  verification_uri_complete: string | null;
-  interval: number;
   expires_at: string;
+  interval: number;
+  user_code: string;
+  verification_uri_complete: string | null;
+  verification_url: string;
 }
 
 interface SpectrumDeviceState {
+  expires_in: number;
+  interval: number;
   user_code: string;
   verification_uri: string;
   verification_uri_complete: string | null;
-  interval: number;
-  expires_in: number;
 }
 
 interface TenantState {
@@ -64,7 +64,7 @@ export default function OnboardClient() {
   const [userPhone, setUserPhone] = useState("");
   const [codexDevice, setCodexDevice] = useState<CodexDeviceState | null>(null);
   const [codexUser, setCodexUser] = useState<{ email: string | null; name: string | null } | null>(
-    null,
+    null
   );
   const [spectrumDevice, setSpectrumDevice] = useState<SpectrumDeviceState | null>(null);
   const [tenant, setTenant] = useState<TenantState | null>(null);
@@ -116,20 +116,28 @@ export default function OnboardClient() {
   }, []);
 
   useEffect(() => {
-    if (stage !== "codex-device" || !codexDevice) return;
+    if (stage !== "codex-device" || !codexDevice) {
+      return;
+    }
     let cancelled = false;
     let interval = codexDevice.interval * 1000;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       try {
         const res = await fetch("/api/codex/device/poll", { method: "POST" });
         const data = await res.json();
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         switch (data.status) {
           case "ok":
-            if (data.user) setCodexUser({ email: data.user.email, name: data.user.name });
+            if (data.user) {
+              setCodexUser({ email: data.user.email, name: data.user.name });
+            }
             setStage("codex-success");
             return;
           case "pending":
@@ -156,7 +164,9 @@ export default function OnboardClient() {
           }
         }
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         toast.error("Couldn't reach OpenAI", {
           description: err instanceof Error ? err.message : "polling failed",
         });
@@ -166,25 +176,20 @@ export default function OnboardClient() {
     pollTimer = setTimeout(poll, interval);
     return () => {
       cancelled = true;
-      if (pollTimer) clearTimeout(pollTimer);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, codexDevice]);
-
-  useEffect(() => {
-    if (stage !== "codex-success") return;
-    const t = setTimeout(() => {
-      void beginSpectrum();
-    }, 900);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage]);
 
   const beginSpectrum = useCallback(async () => {
     setBusy(true);
     try {
       const res = await fetch("/api/oauth/device/start", { method: "POST" });
-      if (!res.ok) throw new Error((await res.json()).error ?? "device flow start failed");
+      if (!res.ok) {
+        throw new Error((await res.json()).error ?? "device flow start failed");
+      }
       const data = (await res.json()) as SpectrumDeviceState;
       setSpectrumDevice(data);
       setStage("spectrum-device");
@@ -198,17 +203,33 @@ export default function OnboardClient() {
   }, []);
 
   useEffect(() => {
-    if (stage !== "spectrum-device" || !spectrumDevice) return;
+    if (stage !== "codex-success") {
+      return;
+    }
+    const t = setTimeout(() => {
+      void beginSpectrum();
+    }, 900);
+    return () => clearTimeout(t);
+  }, [stage, beginSpectrum]);
+
+  useEffect(() => {
+    if (stage !== "spectrum-device" || !spectrumDevice) {
+      return;
+    }
     let cancelled = false;
     let interval = spectrumDevice.interval * 1000;
     let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const poll = async () => {
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
       try {
         const res = await fetch("/api/oauth/device/poll", { method: "POST" });
         const data = await res.json();
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         switch (data.status) {
           case "ok":
             setStage("phone");
@@ -236,7 +257,9 @@ export default function OnboardClient() {
             return;
         }
       } catch (err) {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         toast.error("Couldn't reach Spectrum", {
           description: err instanceof Error ? err.message : "polling failed",
         });
@@ -246,7 +269,9 @@ export default function OnboardClient() {
     pollTimer = setTimeout(poll, interval);
     return () => {
       cancelled = true;
-      if (pollTimer) clearTimeout(pollTimer);
+      if (pollTimer) {
+        clearTimeout(pollTimer);
+      }
     };
   }, [stage, spectrumDevice]);
 
@@ -267,9 +292,13 @@ export default function OnboardClient() {
           error?: string;
           reason?: string;
         };
-        if (body.reason === "phone_conflict") setStage("phone");
-        else if (body.reason === "codex_required") setStage("codex");
-        else setStage("codex");
+        if (body.reason === "phone_conflict") {
+          setStage("phone");
+        } else if (body.reason === "codex_required") {
+          setStage("codex");
+        } else {
+          setStage("codex");
+        }
         throw new Error(body.error ?? `provision failed (${res.status})`);
       }
       const data = await res.json();
@@ -292,14 +321,14 @@ export default function OnboardClient() {
   if (!bootstrapped) {
     return (
       <div className="flex w-full max-w-[480px] flex-col items-center text-center">
-        <div className="skeleton-chip" aria-hidden />
-        <div className="mt-6 flex items-center gap-1.5" aria-hidden>
+        <div aria-hidden className="skeleton-chip" />
+        <div aria-hidden className="mt-6 flex items-center gap-1.5">
           {[0, 1, 2, 3].map((i) => (
-            <span key={i} className="skeleton-dot" />
+            <span className="skeleton-dot" key={i} />
           ))}
         </div>
-        <div className="skeleton-line mt-5 w-[60%]" aria-hidden />
-        <div className="skeleton-line mt-3 w-[80%]" aria-hidden />
+        <div aria-hidden className="skeleton-line mt-5 w-[60%]" />
+        <div aria-hidden className="skeleton-line mt-3 w-[80%]" />
         <div className="sr-only">Loading</div>
       </div>
     );
@@ -311,21 +340,21 @@ export default function OnboardClient() {
         <StageIcon stage={stage} />
       </div>
 
-      <ProgressDots count={TOTAL_STEPS} active={activeIdx} />
+      <ProgressDots active={activeIdx} count={TOTAL_STEPS} />
 
       <div className="mt-5 flex flex-col items-center" key={stage}>
         <StageContent
-          stage={stage}
-          busy={busy}
           beginCodex={beginCodex}
+          busy={busy}
           codexDevice={codexDevice}
           codexUser={codexUser}
+          onPhoneSubmit={() => void provision()}
+          setUserPhone={setUserPhone}
+          showDeviceAuthHint={showDeviceAuthHint}
           spectrumDevice={spectrumDevice}
+          stage={stage}
           tenant={tenant}
           userPhone={userPhone}
-          setUserPhone={setUserPhone}
-          onPhoneSubmit={() => void provision()}
-          showDeviceAuthHint={showDeviceAuthHint}
         />
       </div>
     </div>
@@ -342,9 +371,9 @@ function StageIcon({ stage }: { stage: Stage }) {
         <div className="relative">
           <ChatGPTChip />
           <span
-            className="check-pop absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-white shadow-[0_4px_14px_-4px_rgba(16,163,127,0.7)]"
-            style={{ background: "var(--color-success)" }}
             aria-hidden
+            className="check-pop absolute -right-1 -bottom-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-white shadow-[0_4px_14px_-4px_rgba(16,163,127,0.7)]"
+            style={{ background: "var(--color-success)" }}
           >
             <Check size={13} strokeWidth={3} />
           </span>
@@ -354,19 +383,18 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "phone":
       return <SpectrumChip />;
     case "done":
-      return <CodexIcon size="clamp(56px, 6.5vw, 68px)" radius="18px" />;
+      return <CodexIcon radius="18px" size="clamp(56px, 6.5vw, 68px)" />;
   }
 }
 
 function ProgressDots({ count, active }: { count: number; active: number }) {
   const slots = Array.from({ length: count }, (_, i) => `step-${i}`);
   return (
-    <div className="fade-up fade-up-3 mt-6 flex items-center gap-1.5" aria-hidden>
+    <div aria-hidden className="fade-up fade-up-3 mt-6 flex items-center gap-1.5">
       {slots.map((id, i) => {
         const state = i < active ? "done" : i === active ? "active" : "idle";
         return (
           <span
-            key={id}
             className={`h-1.5 rounded-full transition-all duration-500 ${
               state === "active"
                 ? "w-6 bg-[var(--color-text)]"
@@ -374,6 +402,7 @@ function ProgressDots({ count, active }: { count: number; active: number }) {
                   ? "w-1.5 bg-[var(--color-text)] opacity-50"
                   : "w-1.5 bg-[var(--color-text)] opacity-15"
             }`}
+            key={id}
           />
         );
       })}
@@ -382,17 +411,17 @@ function ProgressDots({ count, active }: { count: number; active: number }) {
 }
 
 interface StageContentProps {
-  stage: Stage;
-  busy: boolean;
   beginCodex: () => void;
+  busy: boolean;
   codexDevice: CodexDeviceState | null;
   codexUser: { email: string | null; name: string | null } | null;
+  onPhoneSubmit: () => void;
+  setUserPhone: (v: string) => void;
+  showDeviceAuthHint: boolean;
   spectrumDevice: SpectrumDeviceState | null;
+  stage: Stage;
   tenant: TenantState | null;
   userPhone: string;
-  setUserPhone: (v: string) => void;
-  onPhoneSubmit: () => void;
-  showDeviceAuthHint: boolean;
 }
 
 function StageContent({
@@ -449,10 +478,10 @@ function StageContent({
     case "phone":
       return (
         <PhoneStage
-          userPhone={userPhone}
-          setUserPhone={setUserPhone}
           busy={busy}
           onSubmit={onPhoneSubmit}
+          setUserPhone={setUserPhone}
+          userPhone={userPhone}
         />
       );
 
@@ -491,7 +520,9 @@ function PhoneStage({
 
   const formatted = useMemo(() => {
     const digits = local.replace(/\D/g, "");
-    if (!digits) return "";
+    if (!digits) {
+      return "";
+    }
     const t = new AsYouType(country.iso as CountryCode);
     const out = t.input(digits);
     return out || digits;
@@ -500,7 +531,9 @@ function PhoneStage({
   useEffect(() => {
     const digits = local.replace(/\D/g, "");
     const next = digits ? `+${country.dial}${digits}` : "";
-    if (next !== userPhone) setUserPhone(next);
+    if (next !== userPhone) {
+      setUserPhone(next);
+    }
   }, [country, local, setUserPhone, userPhone]);
 
   const e164 = `+${country.dial}${local.replace(/\D/g, "")}`;
@@ -534,73 +567,75 @@ function PhoneStage({
       <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
         <form
           className={`flex w-full flex-col gap-3 ${shaking ? "shake" : ""}`}
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmit();
           }}
-          noValidate
         >
           <div
             className="input-glass relative flex h-[52px] items-stretch p-0 pr-10"
             data-state={phoneState === "neutral" ? undefined : phoneState}
           >
-            <CountryDialPicker value={country} onChange={setCountry} disabled={busy} />
+            <CountryDialPicker disabled={busy} onChange={setCountry} value={country} />
             <span
               aria-hidden
-              className="flex select-none items-center pl-3 pr-1 font-mono text-[15px] tabular-nums text-[var(--color-text-muted)]"
+              className="flex select-none items-center pr-1 pl-3 font-mono text-[15px] text-[var(--color-text-muted)] tabular-nums"
             >
               +{country.dial}
             </span>
             <input
-              className="w-full bg-transparent pl-1 pr-3 text-left text-[15px] tracking-[0.01em] text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-dim)]"
-              type="tel"
-              inputMode="tel"
-              placeholder="000 000 0000"
+              aria-invalid={phoneState === "invalid" || undefined}
+              aria-label="Phone number"
               autoComplete="tel-national"
-              spellCheck={false}
-              value={formatted}
+              className="w-full bg-transparent pr-3 pl-1 text-left text-[15px] text-[var(--color-text)] tracking-[0.01em] outline-none placeholder:text-[var(--color-text-dim)]"
+              disabled={busy}
+              inputMode="tel"
               onChange={(e) => {
                 setLocal(e.target.value.replace(/[^\d\s().-]/g, ""));
-                if (attempted) setAttempted(false);
+                if (attempted) {
+                  setAttempted(false);
+                }
               }}
-              disabled={busy}
-              aria-label="Phone number"
-              aria-invalid={phoneState === "invalid" || undefined}
+              placeholder="000 000 0000"
               required
+              spellCheck={false}
+              type="tel"
+              value={formatted}
             />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+            <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2">
               {phoneState === "valid" ? (
-                <Check size={16} className="text-[var(--color-success)]" />
+                <Check className="text-[var(--color-success)]" size={16} />
               ) : phoneState === "invalid" ? (
-                <AlertCircle size={16} className="text-[var(--color-danger)]" />
+                <AlertCircle className="text-[var(--color-danger)]" size={16} />
               ) : null}
             </span>
           </div>
           <button
-            type="submit"
             className="btn-pill-primary inline-flex w-full items-center justify-center"
             disabled={busy || local.length === 0}
+            type="submit"
           >
-            {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+            {busy ? <Loader2 className="mr-1.5 animate-spin" size={14} /> : null}
             Continue
-            {!busy && <ArrowRight size={14} className="ml-1.5" />}
+            {!busy && <ArrowRight className="ml-1.5" size={14} />}
           </button>
-          <p className="mt-3 max-w-[28rem] text-center text-[11.5px] leading-snug text-[var(--color-text-muted)]">
+          <p className="mt-3 max-w-[28rem] text-center text-[11.5px] text-[var(--color-text-muted)] leading-snug">
             By continuing you agree to the{" "}
             <a
-              href="https://github.com/photon-hq/codex/blob/main/TERMS.md"
-              target="_blank"
-              rel="noopener noreferrer"
               className="underline underline-offset-2 hover:text-[var(--color-text)]"
+              href="https://github.com/photon-hq/codex/blob/main/TERMS.md"
+              rel="noopener noreferrer"
+              target="_blank"
             >
               Terms
             </a>{" "}
             and{" "}
             <a
-              href="https://github.com/photon-hq/codex/blob/main/PRIVACY.md"
-              target="_blank"
-              rel="noopener noreferrer"
               className="underline underline-offset-2 hover:text-[var(--color-text)]"
+              href="https://github.com/photon-hq/codex/blob/main/PRIVACY.md"
+              rel="noopener noreferrer"
+              target="_blank"
             >
               Privacy Notice
             </a>
@@ -614,7 +649,9 @@ function PhoneStage({
 
 function splitE164(value: string): { country: Country; local: string } {
   const trimmed = value.trim();
-  if (!trimmed) return { country: DEFAULT_COUNTRY, local: "" };
+  if (!trimmed) {
+    return { country: DEFAULT_COUNTRY, local: "" };
+  }
   const parsed = parsePhoneNumberFromString(trimmed.startsWith("+") ? trimmed : `+${trimmed}`);
   if (parsed?.country) {
     const country = findByIso(parsed.country) ?? DEFAULT_COUNTRY;
@@ -638,7 +675,7 @@ function CodexSuccessStage({ email }: { email: string | null }) {
         )}
       </p>
       <div className="fade-up fade-up-6 mt-7 flex items-center gap-2.5 text-[var(--color-text-muted)]">
-        <Loader2 size={14} className="animate-spin" />
+        <Loader2 className="animate-spin" size={14} />
         <span className="body-small">One sec</span>
       </div>
     </>
@@ -663,27 +700,27 @@ function CodexLandingStage({
       </p>
       <div className="fade-up fade-up-6 mt-7 w-full max-w-[28rem]">
         <button
-          type="button"
-          onClick={onSubmit}
-          disabled={busy}
           className="btn-pill-primary inline-flex w-full items-center justify-center"
+          disabled={busy}
+          onClick={onSubmit}
+          type="button"
         >
-          {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+          {busy ? <Loader2 className="mr-1.5 animate-spin" size={14} /> : null}
           Continue with ChatGPT
-          {!busy && <ArrowRight size={14} className="ml-1.5" />}
+          {!busy && <ArrowRight className="ml-1.5" size={14} />}
         </button>
         {showDeviceAuthHint && (
           <div className="fade-up mt-4 rounded-[10px] border border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] px-3 py-2.5 text-left">
-            <p className="text-[12px] leading-snug text-[var(--color-text-muted)]">
+            <p className="text-[12px] text-[var(--color-text-muted)] leading-snug">
               <span className="font-medium text-[var(--color-text)]">
                 Authorization Error from OpenAI?
               </span>{" "}
               Turn on{" "}
               <a
-                href="https://chatgpt.com/#settings/Security"
-                target="_blank"
-                rel="noreferrer"
                 className="underline underline-offset-2 hover:text-[var(--color-text)]"
+                href="https://chatgpt.com/#settings/Security"
+                rel="noreferrer"
+                target="_blank"
               >
                 Device code authorization for Codex
               </a>{" "}
@@ -701,8 +738,8 @@ function CodexDeviceCard({ device }: { device: CodexDeviceState }) {
   return (
     <DeviceCardLayout
       openUrl={openUrl}
-      verificationHost={new URL(device.verification_url).host}
       userCode={device.user_code}
+      verificationHost={new URL(device.verification_url).host}
     />
   );
 }
@@ -712,8 +749,8 @@ function SpectrumDeviceCard({ device }: { device: SpectrumDeviceState }) {
   return (
     <DeviceCardLayout
       openUrl={openUrl}
-      verificationHost={new URL(device.verification_uri).host}
       userCode={device.user_code}
+      verificationHost={new URL(device.verification_uri).host}
     />
   );
 }
@@ -744,32 +781,32 @@ function DeviceCardLayout({
   return (
     <div className="fade-up fade-up-6 mt-8 flex w-full max-w-[28rem] flex-col items-center px-1">
       <a
-        href={openUrl}
-        target="_blank"
-        rel="noreferrer"
         className="btn-pill-primary inline-flex max-w-full items-center gap-1.5"
+        href={openUrl}
+        rel="noreferrer"
+        target="_blank"
       >
         <span className="truncate">
-          Continue on <span className="hidden xs:inline">{verificationHost}</span>
+          Continue on <span className="xs:inline hidden">{verificationHost}</span>
           <span className="xs:hidden">OpenAI</span>
         </span>
-        <ExternalLink size={13} className="flex-shrink-0" />
+        <ExternalLink className="flex-shrink-0" size={13} />
       </a>
       <div className="mt-3 inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
-        <Loader2 size={12} className="animate-spin" />
+        <Loader2 className="animate-spin" size={12} />
         <span>Waiting for you to approve&hellip;</span>
       </div>
 
       <div className="mt-7 flex flex-col items-center">
-        <span className="text-[11.5px] uppercase tracking-[0.12em] text-[var(--color-text-dim)]">
+        <span className="text-[11.5px] text-[var(--color-text-dim)] uppercase tracking-[0.12em]">
           Paste this code
         </span>
         <button
-          type="button"
-          onClick={copy}
-          className="group relative mt-2 rounded-lg font-mono text-[clamp(20px,5.2vw,28px)] font-medium leading-none tabular-nums text-[var(--color-text)] outline-none transition-opacity hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.2)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
-          style={{ letterSpacing: "0.18em" }}
           aria-label="Copy verification code"
+          className="group relative mt-2 rounded-lg font-medium font-mono text-[clamp(20px,5.2vw,28px)] text-[var(--color-text)] tabular-nums leading-none outline-none transition-opacity hover:opacity-85 focus-visible:ring-2 focus-visible:ring-[rgba(0,0,0,0.2)] focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+          onClick={copy}
+          style={{ letterSpacing: "0.18em" }}
+          type="button"
         >
           <span className="inline-flex items-baseline" style={{ paddingLeft: "0.18em" }}>
             <span>{firstHalf}</span>
@@ -778,10 +815,10 @@ function DeviceCardLayout({
           </span>
           <span
             aria-hidden
-            className={`pointer-events-none absolute -right-6 top-1/2 -translate-y-1/2 transition-opacity ${
+            className={`pointer-events-none absolute top-1/2 -right-6 -translate-y-1/2 transition-opacity ${
               copied
-                ? "opacity-100 text-[var(--color-success)]"
-                : "opacity-0 text-[var(--color-text-muted)] group-hover:opacity-100"
+                ? "text-[var(--color-success)] opacity-100"
+                : "text-[var(--color-text-muted)] opacity-0 group-hover:opacity-100"
             }`}
           >
             {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -815,12 +852,16 @@ function DonePanel({
   };
 
   const openImessage = useCallback(() => {
-    if (!redirectUri) return;
+    if (!redirectUri) {
+      return;
+    }
     window.location.href = redirectUri;
   }, [redirectUri]);
 
   useEffect(() => {
-    if (!redirectUri) return;
+    if (!redirectUri) {
+      return;
+    }
     const t = window.setTimeout(openImessage, 400);
     return () => window.clearTimeout(t);
   }, [redirectUri, openImessage]);
@@ -849,77 +890,77 @@ function DonePanel({
   return (
     <>
       <button
-        type="button"
-        onClick={copy}
-        className="fade-up fade-up-6 group mt-7 inline-flex items-baseline gap-2 font-mono text-[clamp(32px,5.2vw,44px)] font-medium leading-none tracking-[-0.02em] text-[var(--color-text)] outline-none transition-opacity hover:opacity-85"
         aria-label="Copy phone number"
+        className="fade-up fade-up-6 group mt-7 inline-flex items-baseline gap-2 font-medium font-mono text-[clamp(32px,5.2vw,44px)] text-[var(--color-text)] leading-none tracking-[-0.02em] outline-none transition-opacity hover:opacity-85"
+        onClick={copy}
+        type="button"
       >
         <span>{phoneNumber}</span>
         <span
           className={`self-center text-[var(--color-text-muted)] transition-opacity ${copied ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
         >
           {copied ? (
-            <Check size={14} className="text-[var(--color-success)]" />
+            <Check className="text-[var(--color-success)]" size={14} />
           ) : (
             <Copy size={14} />
           )}
         </span>
       </button>
       <div className="fade-up fade-up-7 mt-8 flex w-full max-w-[28rem] flex-col items-center gap-3 text-center">
-        <p className="text-[13.5px] leading-snug text-[var(--color-text-muted)]">
+        <p className="text-[13.5px] text-[var(--color-text-muted)] leading-snug">
           Sometimes your browser blocks the jump to iMessage. If nothing opened in a moment, text{" "}
           <span className="font-medium text-[var(--color-text)]">{phoneNumber}</span> manually from
           the Messages app to start the thread.
         </p>
         {redirectUri && (
           <button
-            type="button"
+            className="inline-flex items-center gap-1.5 font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em] hover:text-[var(--color-text)]"
             onClick={openImessage}
-            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+            type="button"
           >
             <MessageSquare size={12} /> Try opening iMessage again
           </button>
         )}
         <Link
+          className="font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em] hover:text-[var(--color-text)]"
           href="/dashboard"
-          className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
         >
           Go to dashboard &rarr;
         </Link>
       </div>
-      <div className="fade-up fade-up-7 mt-10 flex w-full max-w-[24rem] items-center justify-center gap-x-5 border-t border-[var(--color-border)] pt-6 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)]">
-        {!confirmDisconnect ? (
-          <button
-            type="button"
-            onClick={() => setConfirmDisconnect(true)}
-            className="inline-flex items-center gap-1.5 text-[var(--color-danger)] hover:opacity-80"
-          >
-            <Trash2 size={12} /> Disconnect
-          </button>
-        ) : (
+      <div className="fade-up fade-up-7 mt-10 flex w-full max-w-[24rem] items-center justify-center gap-x-5 border-[var(--color-border)] border-t pt-6 font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em]">
+        {confirmDisconnect ? (
           <span className="inline-flex items-center gap-x-5">
             <button
-              type="button"
-              onClick={disconnect}
-              disabled={disconnecting}
               className="inline-flex items-center gap-1.5 font-semibold text-[var(--color-danger)] hover:opacity-80 disabled:opacity-60"
+              disabled={disconnecting}
+              onClick={disconnect}
+              type="button"
             >
               {disconnecting ? (
-                <Loader2 size={12} className="animate-spin" />
+                <Loader2 className="animate-spin" size={12} />
               ) : (
                 <Trash2 size={12} />
               )}
               {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
             </button>
             <button
-              type="button"
-              onClick={() => setConfirmDisconnect(false)}
-              disabled={disconnecting}
               className="hover:text-[var(--color-text)]"
+              disabled={disconnecting}
+              onClick={() => setConfirmDisconnect(false)}
+              type="button"
             >
               Cancel
             </button>
           </span>
+        ) : (
+          <button
+            className="inline-flex items-center gap-1.5 text-[var(--color-danger)] hover:opacity-80"
+            onClick={() => setConfirmDisconnect(true)}
+            type="button"
+          >
+            <Trash2 size={12} /> Disconnect
+          </button>
         )}
       </div>
     </>

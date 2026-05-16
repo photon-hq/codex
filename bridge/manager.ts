@@ -5,11 +5,11 @@ import { type TenantHealth, TenantWorker } from "./tenant";
 const POLL_INTERVAL_MS = Number(process.env.BRIDGE_POLL_INTERVAL_MS ?? 10_000);
 
 export interface BridgeStatus {
+  lastSyncAt: number | null;
+  lastSyncError: string | null;
   running: boolean;
   startedAt: number | null;
   tenantCount: number;
-  lastSyncAt: number | null;
-  lastSyncError: string | null;
   tenants: TenantHealth[];
 }
 
@@ -26,7 +26,9 @@ export class BridgeManager {
   }
 
   start(): Promise<void> {
-    if (this.startPromise) return this.startPromise;
+    if (this.startPromise) {
+      return this.startPromise;
+    }
     this.startPromise = this.bootstrap().catch((err) => {
       this.startPromise = null;
       throw err;
@@ -35,10 +37,18 @@ export class BridgeManager {
   }
 
   private async bootstrap() {
-    if (this.startedAt) return;
-    if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is not set");
-    if (!process.env.MASTER_KEY) throw new Error("MASTER_KEY is not set");
-    if (!process.env.SPECTRUM_API_HOST) throw new Error("SPECTRUM_API_HOST is not set");
+    if (this.startedAt) {
+      return;
+    }
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is not set");
+    }
+    if (!process.env.MASTER_KEY) {
+      throw new Error("MASTER_KEY is not set");
+    }
+    if (!process.env.SPECTRUM_API_HOST) {
+      throw new Error("SPECTRUM_API_HOST is not set");
+    }
 
     console.log("[bridge] starting…");
     await this.sync();

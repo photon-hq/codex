@@ -1,18 +1,19 @@
 # Repository Code Standards
 
-This project uses **Biome** for linting and formatting. CI runs `bunx biome ci .`
-on every push and rejects unformatted code, so AI agents and humans should follow
-the rules below to avoid pipeline failures.
+This project uses **Ultracite** (a strict preset on top of Biome 2) for linting
+and formatting. CI runs `bunx biome ci .` on every push and rejects unformatted
+or rule-violating code, so AI agents and humans should follow the rules below to
+avoid pipeline failures.
 
 ## Quick Reference
 
-- **Format code**: `bunx biome format --write .`
-- **Apply lint + format fixes**: `bunx biome check --write .`
+- **Format + lint with autofix**: `bunx ultracite fix`
+- **Check for issues**: `bunx ultracite check`
 - **CI-equivalent (read-only)**: `bunx biome ci .`
 - **Type-check**: `bun run typecheck`
 - **Build**: `bun run build`
 
-Most issues are autofixable — run `bunx biome check --write .` before committing.
+Run `bunx ultracite fix` before committing — it handles 95% of issues automatically.
 
 ---
 
@@ -50,7 +51,8 @@ clarity and explicit intent over brevity.
 
 - Use function components over class components.
 - Call hooks at the top level only, never conditionally.
-- Specify all dependencies in hook dependency arrays correctly.
+- Specify all dependencies in hook dependency arrays correctly. Define hoisted
+  callbacks (`useCallback`) **above** the `useEffect` that depends on them.
 - Use the `key` prop for elements in iterables (prefer unique IDs over array indices).
 - Nest children between opening and closing tags instead of passing as props.
 - Don't define components inside other components.
@@ -59,26 +61,28 @@ clarity and explicit intent over brevity.
   - Use proper heading hierarchy.
   - Add labels for form inputs.
   - Include keyboard event handlers alongside mouse events.
-  - Use semantic elements (`<button>`, `<nav>`, etc.) instead of divs with roles.
+  - Use semantic elements (`<button>`, `<nav>`, etc.) instead of `<div role="…">`.
 
 ### Error Handling & Debugging
 
-- Remove `console.log`, `debugger`, and `alert` statements from production code.
+- Remove `console.log`, `debugger`, and `alert` from production UI code. The
+  long-running bridge worker (`bridge/`) is allowed structured `console.*` for
+  live observability.
 - Throw `Error` objects with descriptive messages, not strings or other values.
 - Use `try-catch` blocks meaningfully — don't catch errors just to rethrow them.
 - Prefer early returns over nested conditionals for error cases.
 
 ### Code Organization
 
-- Keep functions focused and under reasonable cognitive complexity limits.
+- Keep functions focused. If a function passes ultracite's cognitive-complexity
+  check, it's small enough.
 - Extract complex conditions into well-named boolean variables.
 - Use early returns to reduce nesting.
 - Prefer simple conditionals over nested ternary operators.
-- Group related code together and separate concerns.
 
 ### Security
 
-- Add `rel="noopener"` (or `noopener noreferrer`) when using `target="_blank"` on links.
+- Add `rel="noopener noreferrer"` when using `target="_blank"` on links.
 - Avoid `dangerouslySetInnerHTML` unless absolutely necessary.
 - Don't use `eval()` or assign directly to `document.cookie`.
 - Validate and sanitize user input.
@@ -86,20 +90,18 @@ clarity and explicit intent over brevity.
 ### Performance
 
 - Avoid spread syntax in accumulators within loops.
-- Use top-level regex literals instead of creating them in loops.
-- Prefer specific imports over namespace imports.
-- Avoid barrel files (index files that re-export everything).
-- Use proper image components (e.g., Next.js `<Image>`) over `<img>` tags when on Next.js routes.
+- Hoist regex literals to module scope when used inside hot paths.
+- Prefer specific imports over namespace imports (with the exception of
+  drizzle-orm `* as schema` which is documented in the codebase).
+- Use Next.js `<Image>` for marketing-page imagery; the OAuth/marketing pages
+  in this repo intentionally render `<img>` for the OpenAI persistent CDN.
 
-### Framework-Specific Guidance
+### Next.js (App Router)
 
-**Next.js (App Router):**
-
-- Use `<Image>` for images on Next routes.
-- Use the App Router metadata API for head elements.
 - Use Server Components for async data fetching instead of async Client Components.
+- Use the App Router metadata API for head elements.
 
-**React 19+:**
+### React 19+
 
 - Use `ref` as a prop instead of `React.forwardRef`.
 
@@ -109,13 +111,14 @@ clarity and explicit intent over brevity.
 
 - **Comments**: only explain *why* (constraints, trade-offs, external API quirks, doc links).
   Do NOT narrate what the code does (e.g. `// loop over items`, `// return the result`).
-- **Logging**: keep `console.log/warn/error` only for the long-running bridge worker
-  (`bridge/`) where they aid live debugging. UI/route handlers should not log to console.
-- **Imports**: keep ordered (external → `@/...` aliases → relative). Biome enforces this.
 - **DB schema changes**: edit `db/schema.ts`, then run `bun run db:push` on the target env.
   No migrations folder — Drizzle-kit applies the diff directly.
-- **Secrets**: never commit `.env`; the encrypted-at-rest fields live on `tenants`
-  and use AES-256-GCM via `lib/crypto.ts`.
+- **Secrets**: never commit `.env`; encrypted-at-rest fields on `tenants` use
+  AES-256-GCM via `lib/crypto.ts`.
+- **Fire-and-forget promises**: prefix with `void` (e.g. `void this.loop()`).
+  This rule is opted-out of ultracite's `noVoid` for the codebase.
+- **Per-file rule overrides** live in `biome.json` under `overrides`. Add a new
+  entry rather than sprinkling `// biome-ignore` comments.
 
 ## Testing
 
@@ -124,11 +127,11 @@ clarity and explicit intent over brevity.
 - Don't use `.only` or `.skip` in committed code.
 - Keep test suites reasonably flat — avoid excessive `describe` nesting.
 
-## When Biome Can't Help
+## When Ultracite Can't Help
 
-Biome's linter will catch most issues automatically. Focus your attention on:
+Ultracite catches most issues automatically. Focus your attention on:
 
-1. **Business logic correctness** — Biome can't validate your algorithms.
+1. **Business logic correctness** — Ultracite can't validate your algorithms.
 2. **Meaningful naming** — descriptive names for functions, variables, and types.
 3. **Architecture decisions** — component structure, data flow, and API design.
 4. **Edge cases** — boundary conditions and error states.
@@ -137,4 +140,4 @@ Biome's linter will catch most issues automatically. Focus your attention on:
 
 ---
 
-Run `bunx biome check --write .` before committing to keep CI green.
+Run `bunx ultracite fix && bun run typecheck` before committing to keep CI green.

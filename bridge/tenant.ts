@@ -1,34 +1,34 @@
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { type Message, richlink, type Space, Spectrum } from "spectrum-ts";
+import { imessage } from "spectrum-ts/providers/imessage";
 import { getDb } from "@/db/client";
 import {
-  events,
   type BatchQueueRow,
-  type Tenant,
   batchQueue,
   codexThreads,
+  events,
+  type Tenant,
   tenants,
 } from "@/db/schema";
 import {
   CodexCloudError,
-  type ImageInput,
-  type WhamEnvironment,
   createTask,
   ensureFreshAccessToken,
   followUp,
+  type ImageInput,
   listEnvironments,
   pickDefaultEnvironment,
   uploadImage,
+  type WhamEnvironment,
   waitForReply,
 } from "@/lib/codex-cloud";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { type Message, type Space, Spectrum, richlink } from "spectrum-ts";
-import { imessage } from "spectrum-ts/providers/imessage";
 
 const RESET_REACTION = "👍";
 const ACK_REACTION = "👍";
 const DONE_REACTION = "❤️";
 const CONNECT_ENVIRONMENTS_URL = "https://chatgpt.com/codex/settings/environments";
-const MIN_BACKOFF_MS = 2_000;
+const MIN_BACKOFF_MS = 2000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
@@ -38,7 +38,7 @@ const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 // https://docs.photon.codes/best-practices/inbound-pipeline — long enough to
 // capture real human bursts, short enough that the user doesn't think Codex
 // stalled.
-const BATCH_DEBOUNCE_MS = 5_000;
+const BATCH_DEBOUNCE_MS = 5000;
 const BATCH_MAX_MS = 20_000;
 // If a dispatch claimed rows but never deleted them, treat the claim as
 // abandoned after 5 minutes and re-queue. Longer than any realistic Codex
@@ -60,16 +60,16 @@ const INTRO_TRIGGERS = new Set([
 type SpectrumApp = Awaited<ReturnType<typeof Spectrum>>;
 
 interface MessageContent {
-  type: string;
-  text?: string;
-  name?: string;
+  content?: MessageContent;
+  emoji?: string;
+  items?: Array<{ content?: MessageContent }>;
   mimeType?: string;
+  name?: string;
   read?: () => Promise<Buffer>;
   size?: number;
-  emoji?: string;
+  text?: string;
+  type: string;
   url?: string;
-  items?: Array<{ content?: MessageContent }>;
-  content?: MessageContent;
 }
 
 function flattenContent(top: MessageContent): MessageContent[] {
@@ -80,7 +80,9 @@ function flattenContent(top: MessageContent): MessageContent[] {
     const out: MessageContent[] = [];
     for (const item of top.items) {
       const inner = item?.content;
-      if (inner) out.push(...flattenContent(inner));
+      if (inner) {
+        out.push(...flattenContent(inner));
+      }
     }
     return out.length ? out : [top];
   }
@@ -98,25 +100,25 @@ type ReplyableMessage = Message & {
 // This map only holds timers and a reference to the live head Message so we
 // can land the heart tapback on the right bubble.
 interface PendingBatch {
-  spaceId: string;
-  space: Space<unknown>;
-  headM: ReplyableMessage;
   debounceTimer: ReturnType<typeof setTimeout>;
-  hardTimer: ReturnType<typeof setTimeout>;
   flushing: boolean;
+  hardTimer: ReturnType<typeof setTimeout>;
+  headM: ReplyableMessage;
+  space: Space<unknown>;
+  spaceId: string;
 }
 
 export interface TenantHealth {
-  tenantId: string;
+  consecutiveFailures: number;
+  lastError: string | null;
+  lastErrorAt: number | null;
+  lastMessageAt: number | null;
+  messagesHandled: number;
   phoneNumber: string;
   spectrumProjectId: string;
   subscribed: boolean;
   subscribedAt: number | null;
-  lastErrorAt: number | null;
-  lastError: string | null;
-  consecutiveFailures: number;
-  messagesHandled: number;
-  lastMessageAt: number | null;
+  tenantId: string;
 }
 
 export class TenantWorker {
@@ -164,8 +166,10 @@ export class TenantWorker {
     };
   }
 
-  async start() {
-    if (this.running) return;
+  start() {
+    if (this.running) {
+      return;
+    }
     this.running = true;
     this.stopRequested = false;
     void this.loop();
@@ -209,7 +213,7 @@ export class TenantWorker {
     while (!this.stopRequested) {
       if (this.isAuthDead) {
         console.warn(
-          `[tenant ${this.tenant.id}] auth failed ${this.consecutiveAuthFailures}x — pausing until DB row updates`,
+          `[tenant ${this.tenant.id}] auth failed ${this.consecutiveAuthFailures}x — pausing until DB row updates`
         );
         await this.logEvent("status", "auth_paused", {
           consecutiveAuthFailures: this.consecutiveAuthFailures,
@@ -220,15 +224,19 @@ export class TenantWorker {
         await this.subscribe();
         this.backoffMs = MIN_BACKOFF_MS;
       } catch (err) {
-        if (this.stopRequested) return;
+        if (this.stopRequested) {
+          return;
+        }
         this.subscribed = false;
         this.lastError = err instanceof Error ? err.message : String(err);
         this.lastErrorAt = Date.now();
         this.consecutiveFailures += 1;
-        if (isAuthError(err)) this.consecutiveAuthFailures += 1;
+        if (isAuthError(err)) {
+          this.consecutiveAuthFailures += 1;
+        }
         console.error(
           `[tenant ${this.tenant.id}] subscription error (#${this.consecutiveFailures}):`,
-          err,
+          err
         );
         await this.logEvent("error", "subscribe", { error: serializeError(err) });
         await sleep(this.backoffMs);
@@ -257,7 +265,7 @@ export class TenantWorker {
     this.consecutiveFailures = 0;
     this.consecutiveAuthFailures = 0;
     console.log(
-      `[tenant ${this.tenant.id}] subscribed (${this.tenant.phoneNumber}) project=${this.tenant.spectrumProjectId}`,
+      `[tenant ${this.tenant.id}] subscribed (${this.tenant.phoneNumber}) project=${this.tenant.spectrumProjectId}`
     );
     await this.logEvent("status", "subscribed", { phoneNumber: this.tenant.phoneNumber });
 
@@ -269,7 +277,9 @@ export class TenantWorker {
 
     try {
       for await (const [space, message] of app.messages) {
-        if (this.stopRequested) break;
+        if (this.stopRequested) {
+          break;
+        }
         this.messagesHandled += 1;
         this.lastMessageAt = Date.now();
         await this.handle(space, message).catch((err) => {
@@ -281,7 +291,9 @@ export class TenantWorker {
       try {
         await app.stop();
       } catch {}
-      if (this.app === app) this.app = null;
+      if (this.app === app) {
+        this.app = null;
+      }
       console.warn(`[tenant ${this.tenant.id}] message stream ended — will reconnect`);
     }
   }
@@ -318,7 +330,9 @@ export class TenantWorker {
       const url = typeof content.url === "string" ? content.url : null;
       await this.logEvent("in", "richlink", { url });
       const bodyText = url ? `Reference link: ${url}` : "";
-      if (bodyText) await this.enqueueForBatch(space, m, content, bodyText);
+      if (bodyText) {
+        await this.enqueueForBatch(space, m, content, bodyText);
+      }
       return;
     }
 
@@ -346,7 +360,9 @@ export class TenantWorker {
     if (bodyText.startsWith("/")) {
       this.flushBatchNow(space.id);
       const handled = await this.handleCommand(space, m, bodyText);
-      if (handled) return;
+      if (handled) {
+        return;
+      }
     }
 
     if (!this.tenant.codexRefreshCiphertext) {
@@ -361,7 +377,7 @@ export class TenantWorker {
     space: Space<unknown>,
     m: ReplyableMessage,
     content: MessageContent,
-    bodyText: string,
+    bodyText: string
   ) {
     if (m.react) {
       m.react(ACK_REACTION).catch(() => {});
@@ -434,7 +450,9 @@ export class TenantWorker {
 
   private flushBatchNow(spaceId: string) {
     const batch = this.pendingBatches.get(spaceId);
-    if (!batch || batch.flushing) return;
+    if (!batch || batch.flushing) {
+      return;
+    }
     clearTimeout(batch.debounceTimer);
     clearTimeout(batch.hardTimer);
     // Kick the flush but don't await it — the calling command (e.g. /help)
@@ -444,7 +462,9 @@ export class TenantWorker {
 
   private async flushBatch(spaceId: string) {
     const batch = this.pendingBatches.get(spaceId);
-    if (batch?.flushing) return;
+    if (batch?.flushing) {
+      return;
+    }
     if (batch) {
       batch.flushing = true;
       clearTimeout(batch.debounceTimer);
@@ -460,7 +480,9 @@ export class TenantWorker {
       return;
     }
 
-    if (rows.length === 0) return;
+    if (rows.length === 0) {
+      return;
+    }
 
     try {
       await this.dispatchBatch(rows, batch?.space, batch?.headM);
@@ -486,30 +508,34 @@ export class TenantWorker {
         and(
           eq(batchQueue.tenantId, this.tenant.id),
           eq(batchQueue.spaceId, spaceId),
-          isNull(batchQueue.dispatchedAt),
-        ),
+          isNull(batchQueue.dispatchedAt)
+        )
       )
       .returning();
     return claimed.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
   }
 
   private async deleteRows(rows: BatchQueueRow[]) {
-    if (rows.length === 0) return;
+    if (rows.length === 0) {
+      return;
+    }
     const db = getDb();
     await db.delete(batchQueue).where(
       inArray(
         batchQueue.id,
-        rows.map((r) => r.id),
-      ),
+        rows.map((r) => r.id)
+      )
     );
   }
 
   private async dispatchBatch(
     rows: BatchQueueRow[],
     space: Space<unknown> | undefined,
-    headM: ReplyableMessage | undefined,
+    headM: ReplyableMessage | undefined
   ) {
-    if (rows.length === 0) return;
+    if (rows.length === 0) {
+      return;
+    }
 
     // If we lost the live space (worker restart replay), reconstruct one from
     // the persisted spaceId via the iMessage provider. The chat thread on the
@@ -518,7 +544,7 @@ export class TenantWorker {
     const liveSpace = space ?? (await this.resolveSpace(rows));
     if (!liveSpace) {
       console.warn(
-        `[tenant ${this.tenant.id}] could not resolve space ${rows[0].spaceId} for replay`,
+        `[tenant ${this.tenant.id}] could not resolve space ${rows[0].spaceId} for replay`
       );
       return;
     }
@@ -528,15 +554,19 @@ export class TenantWorker {
     let voiceCount = 0;
     let unsupportedAttachments = 0;
     for (const row of rows) {
-      if (row.kind === "text" && row.bodyText) texts.push(row.bodyText);
-      else if (row.kind === "image" && row.imagePayload) {
+      if (row.kind === "text" && row.bodyText) {
+        texts.push(row.bodyText);
+      } else if (row.kind === "image" && row.imagePayload) {
         images.push(row.imagePayload as unknown as ImageInput);
-      } else if (row.kind === "voice") voiceCount += 1;
-      else if (row.kind === "skipped") unsupportedAttachments += 1;
+      } else if (row.kind === "voice") {
+        voiceCount += 1;
+      } else if (row.kind === "skipped") {
+        unsupportedAttachments += 1;
+      }
     }
 
     const mergedText = texts.join("\n\n").trim();
-    const replayHint = !headM ? "(Picking up where we left off after a restart.) " : "";
+    const replayHint = headM ? "" : "(Picking up where we left off after a restart.) ";
 
     const voiceOnly = voiceCount > 0 && !mergedText && images.length === 0;
     if (voiceOnly) {
@@ -544,7 +574,9 @@ export class TenantWorker {
       const reply = `${replayHint}Voice notes aren't supported yet — send the same idea as text or a screenshot and I'll take it from there.`;
       if (headM) {
         await headM.reply(reply);
-        if (headM.react) headM.react(DONE_REACTION).catch(() => {});
+        if (headM.react) {
+          headM.react(DONE_REACTION).catch(() => {});
+        }
       } else {
         await liveSpace.send(reply);
       }
@@ -596,12 +628,15 @@ export class TenantWorker {
           reply.error,
           reply.pull_request_url,
           unsupportedAttachments,
-          voiceFooter,
+          voiceFooter
         );
         const [firstChunk, ...restChunks] = composed.chunks;
         if (firstChunk !== undefined) {
-          if (headM) await headM.reply(firstChunk);
-          else await liveSpace.send(firstChunk);
+          if (headM) {
+            await headM.reply(firstChunk);
+          } else {
+            await liveSpace.send(firstChunk);
+          }
         }
         for (const chunk of restChunks) {
           await liveSpace.send(chunk);
@@ -632,8 +667,11 @@ export class TenantWorker {
           ? "Connect a GitHub repo to Codex before texting — I need an environment to run in."
           : friendlyError(err);
       try {
-        if (headM) await headM.reply(errorText);
-        else await liveSpace.send(errorText);
+        if (headM) {
+          await headM.reply(errorText);
+        } else {
+          await liveSpace.send(errorText);
+        }
         if (err instanceof CodexCloudError && err.status === 412) {
           await liveSpace.send(richlink(CONNECT_ENVIRONMENTS_URL));
         }
@@ -649,16 +687,20 @@ export class TenantWorker {
   }
 
   private async resolveSpace(rows: BatchQueueRow[]): Promise<Space<unknown> | undefined> {
-    if (!this.app) return undefined;
+    if (!this.app) {
+      return;
+    }
     const senderId = rows.find((r) => r.senderId)?.senderId;
-    if (!senderId) return undefined;
+    if (!senderId) {
+      return;
+    }
     try {
       const im = imessage(this.app);
       const user = await im.user(senderId);
       return await im.space(user);
     } catch (err) {
       console.warn(`[tenant ${this.tenant.id}] resolveSpace failed:`, err);
-      return undefined;
+      return;
     }
   }
 
@@ -677,8 +719,8 @@ export class TenantWorker {
         and(
           eq(batchQueue.tenantId, this.tenant.id),
           sql`${batchQueue.dispatchedAt} IS NOT NULL`,
-          lt(batchQueue.dispatchedAt, new Date(Date.now() - STALE_DISPATCH_MS)),
-        ),
+          lt(batchQueue.dispatchedAt, new Date(Date.now() - STALE_DISPATCH_MS))
+        )
       );
 
     // Any spaces that still have unclaimed rows get replayed via flushBatch,
@@ -688,9 +730,11 @@ export class TenantWorker {
       .from(batchQueue)
       .where(and(eq(batchQueue.tenantId, this.tenant.id), isNull(batchQueue.dispatchedAt)));
     const spaceIds = Array.from(new Set(pendingRows.map((r) => r.spaceId)));
-    if (spaceIds.length === 0) return;
+    if (spaceIds.length === 0) {
+      return;
+    }
     console.warn(
-      `[tenant ${this.tenant.id}] recovering ${spaceIds.length} orphaned space(s) from queue`,
+      `[tenant ${this.tenant.id}] recovering ${spaceIds.length} orphaned space(s) from queue`
     );
     await this.logEvent("status", "queue_recover", { spaces: spaceIds.length });
     for (const spaceId of spaceIds) {
@@ -700,7 +744,9 @@ export class TenantWorker {
 
   private async tryUploadAttachment(content: MessageContent): Promise<ImageInput | null> {
     const mime = (content.mimeType ?? "").toLowerCase();
-    if (!SUPPORTED_IMAGE_MIME.has(mime) || !content.read) return null;
+    if (!(SUPPORTED_IMAGE_MIME.has(mime) && content.read)) {
+      return null;
+    }
     let bytes: Buffer;
     try {
       bytes = await content.read();
@@ -708,8 +754,12 @@ export class TenantWorker {
       console.warn(`[tenant ${this.tenant.id}] attachment read failed:`, err);
       return null;
     }
-    if (!bytes || bytes.byteLength === 0) return null;
-    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) return null;
+    if (!bytes || bytes.byteLength === 0) {
+      return null;
+    }
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+      return null;
+    }
     const { accessToken } = await this.ensureAccessAndEnv();
     return uploadImage({
       accessToken,
@@ -721,12 +771,14 @@ export class TenantWorker {
 
   private async ensureAccessAndEnv(): Promise<{ accessToken: string; environmentId: string }> {
     if (
-      !this.tenant.codexRefreshCiphertext ||
-      !this.tenant.codexRefreshIv ||
-      !this.tenant.codexRefreshTag ||
-      !this.tenant.codexAccessCiphertext ||
-      !this.tenant.codexAccessIv ||
-      !this.tenant.codexAccessTag
+      !(
+        this.tenant.codexRefreshCiphertext &&
+        this.tenant.codexRefreshIv &&
+        this.tenant.codexRefreshTag &&
+        this.tenant.codexAccessCiphertext &&
+        this.tenant.codexAccessIv &&
+        this.tenant.codexAccessTag
+      )
     ) {
       throw new CodexCloudError("Codex tokens missing for this tenant.", 401, null);
     }
@@ -757,7 +809,7 @@ export class TenantWorker {
         throw new CodexCloudError(
           "Connect a GitHub repo at chatgpt.com/codex/settings/environments before texting Codex.",
           412,
-          null,
+          null
         );
       }
       environmentId = env.id;
@@ -838,13 +890,13 @@ export class TenantWorker {
     m: Message & {
       reply: (text: string) => Promise<unknown>;
       react?: (key: string) => Promise<unknown>;
-    },
+    }
   ) {
     if (m.react) {
       m.react(ACK_REACTION).catch(() => {});
     }
     await m.reply(
-      "Welcome to Codex on iMessage. Text me like you'd text a teammate — I'll spin up tasks against your connected GitHub repo and reply here when they're done.",
+      "Welcome to Codex on iMessage. Text me like you'd text a teammate — I'll spin up tasks against your connected GitHub repo and reply here when they're done."
     );
     await space.send(
       [
@@ -853,10 +905,10 @@ export class TenantWorker {
         "• /branch <name> — switch the branch I run against",
         "• /switch — pick a different environment / repo",
         "• /help — list everything",
-      ].join("\n"),
+      ].join("\n")
     );
     await space.send(
-      "Try it: send a one-liner like “add a /version endpoint and open a PR.” I'll thumbs-up when I'm on it and heart it when the task is finished.",
+      "Try it: send a one-liner like “add a /version endpoint and open a PR.” I'll thumbs-up when I'm on it and heart it when the task is finished."
     );
     if (m.react) {
       m.react(DONE_REACTION).catch(() => {});
@@ -870,7 +922,7 @@ export class TenantWorker {
       reply: (text: string) => Promise<unknown>;
       react?: (key: string) => Promise<unknown>;
     },
-    bodyText: string,
+    bodyText: string
   ): Promise<boolean> {
     const [rawCmd, ...rest] = bodyText.split(/\s+/);
     const cmd = rawCmd.toLowerCase();
@@ -888,14 +940,14 @@ export class TenantWorker {
             "/switch — list connected environments",
             "/switch <number> — pick environment (resets thread)",
             "/help — this message",
-          ].join("\n"),
+          ].join("\n")
         );
         return true;
       }
       case "/branch": {
         if (!arg) {
           await m.reply(
-            `Branch: ${this.tenant.codexEnvironmentBranch}\nReply /branch <name> to switch.`,
+            `Branch: ${this.tenant.codexEnvironmentBranch}\nReply /branch <name> to switch.`
           );
           return true;
         }
@@ -940,7 +992,7 @@ export class TenantWorker {
             return `${i + 1}. ${e.label} — ${repo}${mark}`;
           });
           await m.reply(
-            ["Environments:", ...lines, "", "Reply /switch <number> to pick."].join("\n"),
+            ["Environments:", ...lines, "", "Reply /switch <number> to pick."].join("\n")
           );
           return true;
         }
@@ -949,7 +1001,9 @@ export class TenantWorker {
         let picked: WhamEnvironment | undefined;
         if (/^\d+$/.test(arg)) {
           const idx = Number.parseInt(arg, 10) - 1;
-          if (idx >= 0 && idx < usable.length) picked = usable[idx];
+          if (idx >= 0 && idx < usable.length) {
+            picked = usable[idx];
+          }
         }
         if (!picked) {
           const q = arg.toLowerCase();
@@ -972,7 +1026,7 @@ export class TenantWorker {
         await this.resetThread(m.space.id);
         await this.logEvent("in", "/switch", { environmentId: picked.id, label: picked.label });
         await m.reply(
-          `Switched to ${picked.label} (${picked.repos[0] ?? "no repo"}). Started a fresh thread.`,
+          `Switched to ${picked.label} (${picked.repos[0] ?? "no repo"}). Started a fresh thread.`
         );
         return true;
       }
@@ -1002,10 +1056,16 @@ function sleep(ms: number) {
 }
 
 function isAuthError(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
+  if (!err || typeof err !== "object") {
+    return false;
+  }
   const e = err as { status?: unknown; code?: unknown; message?: unknown };
-  if (e.status === 401 || e.status === 403) return true;
-  if (e.code === "401" || e.code === "403") return true;
+  if (e.status === 401 || e.status === 403) {
+    return true;
+  }
+  if (e.code === "401" || e.code === "403") {
+    return true;
+  }
   const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
   return /invalid credentials|unauthor|forbidden/.test(msg);
 }
@@ -1022,20 +1082,28 @@ function composeReply(
   error: string | null,
   prUrl: string | null,
   unsupportedAttachments: number,
-  voiceFooter?: string | null,
+  voiceFooter?: string | null
 ): { chunks: string[]; prUrl: string | null } {
   const chunks: string[] = [];
-  if (text) chunks.push(...splitIntoBubbles(text));
-  if (error) chunks.push(`Codex error: ${error}`);
-  if (prUrl) chunks.push("PR opened — link to follow.");
+  if (text) {
+    chunks.push(...splitIntoBubbles(text));
+  }
+  if (error) {
+    chunks.push(`Codex error: ${error}`);
+  }
+  if (prUrl) {
+    chunks.push("PR opened — link to follow.");
+  }
   if (unsupportedAttachments > 0) {
     chunks.push(
       unsupportedAttachments === 1
         ? "(One attachment was skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)"
-        : `(${unsupportedAttachments} attachments were skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)`,
+        : `(${unsupportedAttachments} attachments were skipped — only PNG/JPEG/GIF/WEBP under 20 MB are forwarded.)`
     );
   }
-  if (voiceFooter) chunks.push(voiceFooter);
+  if (voiceFooter) {
+    chunks.push(voiceFooter);
+  }
   if (chunks.length === 0) {
     chunks.push("Codex returned an empty reply. Try again or send /new.");
   }
@@ -1048,28 +1116,38 @@ function composeReply(
 // fence markers) so snippets don't get shattered.
 function splitIntoBubbles(raw: string): string[] {
   const text = raw.trim();
-  if (!text) return [];
+  if (!text) {
+    return [];
+  }
   const FENCE = /```[\s\S]*?(?:```|$)/g;
   const tokens: Array<{ kind: "fence" | "prose"; text: string }> = [];
   let cursor = 0;
   for (const match of text.matchAll(FENCE)) {
     const start = match.index ?? 0;
-    if (start > cursor) tokens.push({ kind: "prose", text: text.slice(cursor, start) });
+    if (start > cursor) {
+      tokens.push({ kind: "prose", text: text.slice(cursor, start) });
+    }
     tokens.push({ kind: "fence", text: match[0] });
     cursor = start + match[0].length;
   }
-  if (cursor < text.length) tokens.push({ kind: "prose", text: text.slice(cursor) });
+  if (cursor < text.length) {
+    tokens.push({ kind: "prose", text: text.slice(cursor) });
+  }
 
   const bubbles: string[] = [];
   for (const tok of tokens) {
     if (tok.kind === "fence") {
       const stripped = stripFence(tok.text);
-      if (stripped) bubbles.push(stripped);
+      if (stripped) {
+        bubbles.push(stripped);
+      }
       continue;
     }
     for (const piece of tok.text.split(/\n{2,}/)) {
       const cleaned = stripProseMarkdown(piece).trim();
-      if (cleaned) bubbles.push(cleaned);
+      if (cleaned) {
+        bubbles.push(cleaned);
+      }
     }
   }
   return bubbles;
@@ -1092,12 +1170,12 @@ function stripProseMarkdown(input: string): string {
 
   // Images: ![alt](url) -> alt (url) or just url
   out = out.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, url) =>
-    alt ? `${alt} (${url})` : url,
+    alt ? `${alt} (${url})` : url
   );
 
   // Links: [text](url) -> text (url), or just url when text === url
   out = out.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, label, url) =>
-    label.trim() === url.trim() ? url : `${label} (${url})`,
+    label.trim() === url.trim() ? url : `${label} (${url})`
   );
 
   // Bold + italic markers: ***text***, **text**, __text__, _text_, *text*
@@ -1138,15 +1216,22 @@ function stripProseMarkdown(input: string): string {
 
 function friendlyError(err: unknown): string {
   if (err instanceof CodexCloudError) {
-    if (err.status === 401) return "ChatGPT session expired. Open the dashboard to sign in again.";
-    if (err.status === 412) return err.message;
-    if (err.status === 429)
+    if (err.status === 401) {
+      return "ChatGPT session expired. Open the dashboard to sign in again.";
+    }
+    if (err.status === 412) {
+      return err.message;
+    }
+    if (err.status === 429) {
       return "ChatGPT is rate-limiting Codex right now. Try again in a moment.";
+    }
   }
   const msg = err instanceof Error ? err.message : String(err);
-  if (/401|unauthor/i.test(msg))
+  if (/401|unauthor/i.test(msg)) {
     return "ChatGPT session expired. Open the dashboard to sign in again.";
-  if (/429|rate/i.test(msg))
+  }
+  if (/429|rate/i.test(msg)) {
     return "ChatGPT is rate-limiting Codex right now. Try again in a moment.";
+  }
   return "Codex hit an error. Try again, or send /new to start a fresh thread.";
 }

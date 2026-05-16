@@ -1,6 +1,6 @@
-import { CodexCloudError, pollDeviceCode } from "@/lib/codex-cloud";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { CodexCloudError, pollDeviceCode } from "@/lib/codex-cloud";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,10 +9,10 @@ export async function POST() {
   const jar = await cookies();
   const deviceAuthId = jar.get("codex_device_auth_id")?.value;
   const userCode = jar.get("codex_user_code")?.value;
-  if (!deviceAuthId || !userCode) {
+  if (!(deviceAuthId && userCode)) {
     return NextResponse.json(
       { status: "error", reason: "no codex device flow in progress" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -60,7 +60,7 @@ export async function POST() {
     const status = err instanceof CodexCloudError ? err.status : 502;
     return NextResponse.json(
       { status: "error", reason: err instanceof Error ? err.message : "poll failed" },
-      { status },
+      { status }
     );
   }
 }

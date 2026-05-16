@@ -1,9 +1,11 @@
+import { eq } from "drizzle-orm";
+import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { tenants } from "@/db/schema";
 import { ensureFreshAccessToken, pickDefaultEnvironment } from "@/lib/codex-cloud";
 import { encrypt } from "@/lib/crypto";
 import {
-  SpectrumError,
   checkPhoneAvailability,
   cloudCreateUser,
   cloudTogglePlatform,
@@ -11,14 +13,12 @@ import {
   getProject,
   getSession,
   imessageRedirectUrl,
-  listProjectUsers,
   listProjects,
+  listProjectUsers,
   regenerateProjectSecret,
+  SpectrumError,
   togglePlatform,
 } from "@/lib/spectrum";
-import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
-import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,11 +27,11 @@ const PHONE_RE = /^\+[1-9]\d{6,14}$/;
 
 interface PendingTokens {
   access_token: string;
-  refresh_token: string;
-  expires_at: number;
   account_id?: string | null;
   email?: string | null;
+  expires_at: number;
   name?: string | null;
+  refresh_token: string;
 }
 
 export async function POST(req: Request) {
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
         error: "Sign in with ChatGPT before provisioning your iMessage line.",
         reason: "codex_required",
       },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json(
       { error: "Codex login is corrupted. Sign in again.", reason: "codex_required" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -71,13 +71,13 @@ export async function POST(req: Request) {
     }
   } catch {}
 
-  if (!userPhone || !PHONE_RE.test(userPhone)) {
+  if (!(userPhone && PHONE_RE.test(userPhone))) {
     return NextResponse.json(
       {
         error: "Add your phone number in E.164 format, e.g. +14155550123.",
         reason: "phone_required",
       },
-      { status: 422 },
+      { status: 422 }
     );
   }
 
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     console.warn("[provision] codex token refresh failed:", err);
     return NextResponse.json(
       { error: "Codex login expired. Sign in again.", reason: "codex_required" },
-      { status: 401 },
+      { status: 401 }
     );
   }
 
@@ -125,7 +125,7 @@ export async function POST(req: Request) {
       listProjectsErrored = true;
       console.warn(
         "[provision] list-projects probe failed:",
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : err
       );
     }
 
@@ -136,7 +136,7 @@ export async function POST(req: Request) {
         stillExists = upstreamProjects.some(
           (p) =>
             (p.spectrumProjectId && p.spectrumProjectId === t.spectrumProjectId) ||
-            p.id === t.spectrumProjectId,
+            p.id === t.spectrumProjectId
         );
       }
 
@@ -171,7 +171,7 @@ export async function POST(req: Request) {
       }
 
       console.log(
-        `[provision] upstream project gone (${t.spectrumProjectId}); removing stale tenant ${t.id} and re-provisioning`,
+        `[provision] upstream project gone (${t.spectrumProjectId}); removing stale tenant ${t.id} and re-provisioning`
       );
       await db.delete(tenants).where(eq(tenants.id, t.id));
     }
@@ -183,7 +183,7 @@ export async function POST(req: Request) {
         (p) =>
           typeof p.name === "string" &&
           p.name.toLowerCase().startsWith("codex ") &&
-          p.spectrum !== false,
+          p.spectrum !== false
       );
       if (ours?.id) {
         projectId = ours.id;
@@ -202,13 +202,13 @@ export async function POST(req: Request) {
                 "That phone is already registered on Spectrum. Use a phone you haven't used with Spectrum (Google Voice works well).",
               reason: "phone_conflict",
             },
-            { status: 409 },
+            { status: 409 }
           );
         }
       } catch (err) {
         console.warn(
           "[provision] check-availability failed (continuing):",
-          err instanceof Error ? err.message : err,
+          err instanceof Error ? err.message : err
         );
       }
 
@@ -227,7 +227,7 @@ export async function POST(req: Request) {
       throw new SpectrumError(
         "Spectrum project is missing a spectrumProjectId; cannot reach the cloud API.",
         500,
-        { projectId },
+        { projectId }
       );
     }
 
@@ -250,16 +250,20 @@ export async function POST(req: Request) {
       assigned = user.assignedPhoneNumber?.trim();
       spectrumUserRecordId = user.id;
     } catch (err) {
-      if (!(err instanceof SpectrumError) || err.status !== 409 || !reused) throw err;
+      if (!(err instanceof SpectrumError) || err.status !== 409 || !reused) {
+        throw err;
+      }
       console.warn("[provision] create-user conflict on reused project, finding existing user");
       const users = await listProjectUsers(cloudProjectId, projectSecret).catch(() => []);
       const match = users.find((u) => u.phoneNumber && u.phoneNumber === userPhone);
-      if (!match?.assignedPhoneNumber) throw err;
+      if (!match?.assignedPhoneNumber) {
+        throw err;
+      }
       assigned = match.assignedPhoneNumber.trim();
       spectrumUserRecordId = match.id;
     }
 
-    if (!assigned || !PHONE_RE.test(assigned)) {
+    if (!(assigned && PHONE_RE.test(assigned))) {
       throw new SpectrumError("Spectrum didn't return an assigned iMessage number.", 500, {
         projectId,
         cloudProjectId,
@@ -316,7 +320,7 @@ export async function POST(req: Request) {
             reason: "plan_required",
             billingUrl: `${process.env.SPECTRUM_API_HOST ?? "https://app.photon.codes"}/billing`,
           },
-          { status: 402 },
+          { status: 402 }
         );
       }
       if (err.status === 409) {
@@ -326,7 +330,7 @@ export async function POST(req: Request) {
               "That phone is already on a Spectrum account. Use a phone you haven't registered with Spectrum (e.g. a Google Voice number).",
             reason: "phone_conflict",
           },
-          { status: 409 },
+          { status: 409 }
         );
       }
     }

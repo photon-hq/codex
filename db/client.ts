@@ -8,7 +8,9 @@ const globalForDb = globalThis as unknown as {
 
 function getSql() {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set");
+  if (!url) {
+    throw new Error("DATABASE_URL is not set");
+  }
 
   if (!globalForDb.__sql) {
     globalForDb.__sql = postgres(url, {
@@ -23,5 +25,3 @@ function getSql() {
 export function getDb() {
   return drizzle(getSql(), { schema });
 }
-
-export { schema };

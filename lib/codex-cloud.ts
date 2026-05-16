@@ -10,7 +10,7 @@ export class CodexCloudError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly body: unknown,
+    readonly body: unknown
   ) {
     super(message);
     this.name = "CodexCloudError";
@@ -19,7 +19,9 @@ export class CodexCloudError extends Error {
 
 async function readJson(res: Response): Promise<unknown> {
   const text = await res.text();
-  if (!text) return null;
+  if (!text) {
+    return null;
+  }
   try {
     return JSON.parse(text);
   } catch {
@@ -28,20 +30,25 @@ async function readJson(res: Response): Promise<unknown> {
 }
 
 async function expectOk<T>(res: Response, context: string): Promise<T> {
-  if (res.ok) return (await readJson(res)) as T;
+  if (res.ok) {
+    return (await readJson(res)) as T;
+  }
   const body = await readJson(res);
   let hint = "";
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
     const err = b.error;
-    if (typeof err === "string") hint = err;
-    else if (err && typeof err === "object") {
+    if (typeof err === "string") {
+      hint = err;
+    } else if (err && typeof err === "object") {
       const e = err as Record<string, unknown>;
       hint =
         (typeof e.message === "string" && e.message) ||
         (typeof e.code === "string" && e.code) ||
         "";
-    } else if (typeof b.detail === "string") hint = b.detail;
+    } else if (typeof b.detail === "string") {
+      hint = b.detail;
+    }
   } else if (typeof body === "string" && body.length > 0 && body.length < 240) {
     hint = body;
   }
@@ -49,15 +56,15 @@ async function expectOk<T>(res: Response, context: string): Promise<T> {
   throw new CodexCloudError(
     `${context} failed: ${res.status} ${res.statusText}${suffix}`,
     res.status,
-    body,
+    body
   );
 }
 
 export interface DeviceCodeResponse {
   device_auth_id: string;
-  user_code: string;
-  interval: number;
   expires_at: string;
+  interval: number;
+  user_code: string;
   verification_url: string;
 }
 
@@ -95,13 +102,13 @@ export type DevicePollResult =
 
 interface DeviceCodeSuccess {
   authorization_code: string;
-  code_verifier: string;
   code_challenge: string;
+  code_verifier: string;
 }
 
 export async function pollDeviceCode(
   deviceAuthId: string,
-  userCode: string,
+  userCode: string
 ): Promise<DevicePollResult> {
   const res = await fetch(`${AUTH_HOST}/api/accounts/deviceauth/token`, {
     method: "POST",
@@ -113,8 +120,12 @@ export async function pollDeviceCode(
     body: JSON.stringify({ device_auth_id: deviceAuthId, user_code: userCode }),
     cache: "no-store",
   });
-  if (res.status === 403 || res.status === 404) return { status: "pending" };
-  if (res.status === 410) return { status: "expired" };
+  if (res.status === 403 || res.status === 404) {
+    return { status: "pending" };
+  }
+  if (res.status === 410) {
+    return { status: "expired" };
+  }
   if (!res.ok) {
     const body = await readJson(res);
     return {
@@ -129,10 +140,10 @@ export async function pollDeviceCode(
 }
 
 export interface ChatgptTokens {
-  id_token: string;
   access_token: string;
-  refresh_token: string;
   expires_at: number;
+  id_token: string;
+  refresh_token: string;
 }
 
 async function exchangeAuthorizationCode(code: DeviceCodeSuccess): Promise<ChatgptTokens> {
@@ -183,7 +194,7 @@ export async function refreshTokens(refreshToken: string): Promise<ChatgptTokens
     refresh_token?: string;
     expires_in?: number;
   }>(res, "token refresh");
-  if (!data.access_token || !data.refresh_token || !data.id_token) {
+  if (!(data.access_token && data.refresh_token && data.id_token)) {
     throw new CodexCloudError("refresh response missing tokens", 500, data);
   }
   return tokensFromResponse({
@@ -212,7 +223,9 @@ function tokensFromResponse(data: {
 function expiryFromAccessToken(token: string, fallbackSeconds: number | undefined): number {
   try {
     const payload = decodeJwtPayload(token);
-    if (typeof payload.exp === "number") return payload.exp * 1000;
+    if (typeof payload.exp === "number") {
+      return payload.exp * 1000;
+    }
   } catch {}
   if (fallbackSeconds && Number.isFinite(fallbackSeconds)) {
     return Date.now() + fallbackSeconds * 1000;
@@ -221,11 +234,11 @@ function expiryFromAccessToken(token: string, fallbackSeconds: number | undefine
 }
 
 export interface ChatgptUserClaims {
+  account_id: string | null;
   email: string | null;
   name: string | null;
-  account_id: string | null;
-  user_id: string | null;
   plan_type: string | null;
+  user_id: string | null;
 }
 
 export function parseIdToken(idToken: string): ChatgptUserClaims {
@@ -247,7 +260,9 @@ export function parseIdToken(idToken: string): ChatgptUserClaims {
 
 function decodeJwtPayload(jwt: string): Record<string, unknown> {
   const parts = jwt.split(".");
-  if (parts.length < 2) throw new Error("not a JWT");
+  if (parts.length < 2) {
+    throw new Error("not a JWT");
+  }
   const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
   const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
   const json = Buffer.from(padded, "base64").toString("utf8");
@@ -256,8 +271,8 @@ function decodeJwtPayload(jwt: string): Record<string, unknown> {
 
 export interface StoredTokens {
   access_token: string;
-  refresh_token: string;
   expires_at: number;
+  refresh_token: string;
 }
 
 export interface FreshTokens extends StoredTokens {
@@ -280,45 +295,45 @@ export async function ensureFreshAccessToken(stored: StoredTokens): Promise<Fres
 }
 
 export interface WhamEnvironment {
+  archived: boolean;
   id: string;
+  isPinned?: boolean;
   label: string;
   repos: string[];
-  archived: boolean;
-  isPinned?: boolean;
   taskCount?: number;
 }
 
 export interface WhamTask {
   id: string;
-  title: string;
   status: string;
+  title: string;
   url: string;
 }
 
 export interface WhamCreateResult {
-  task: WhamTask;
   current_turn_id: string | null;
+  task: WhamTask;
 }
 
 export interface WhamReply {
+  current_turn_id: string | null;
+  error: string | null;
+  pull_request_url: string | null;
   status: string;
   text: string;
-  current_turn_id: string | null;
-  pull_request_url: string | null;
-  error: string | null;
 }
 
 export interface ImageInput {
   asset_pointer: string;
-  width: number;
   height: number;
   size_bytes: number;
+  width: number;
 }
 
 interface WhamHttpInit {
   accessToken: string;
-  method?: string;
   body?: unknown;
+  method?: string;
   query?: Record<string, string | number | undefined>;
 }
 
@@ -326,7 +341,9 @@ async function wham<T>(path: string, init: WhamHttpInit): Promise<T> {
   const url = new URL(`${CHATGPT_HOST}/backend-api${path}`);
   if (init.query) {
     for (const [k, v] of Object.entries(init.query)) {
-      if (v !== undefined) url.searchParams.set(k, String(v));
+      if (v !== undefined) {
+        url.searchParams.set(k, String(v));
+      }
     }
   }
   const headers: Record<string, string> = {
@@ -371,7 +388,9 @@ export async function listEnvironments(accessToken: string): Promise<WhamEnviron
 export async function pickDefaultEnvironment(accessToken: string): Promise<WhamEnvironment | null> {
   const envs = await listEnvironments(accessToken);
   const pinned = envs.find((e) => e.isPinned && e.repos.length > 0);
-  if (pinned) return pinned;
+  if (pinned) {
+    return pinned;
+  }
   const withRepo = envs.filter((e) => e.repos.length > 0);
   return withRepo[0] ?? null;
 }
@@ -397,7 +416,7 @@ export async function uploadImage(opts: {
     throw new CodexCloudError(
       `blob upload failed: ${put.status} ${put.statusText}`,
       put.status,
-      null,
+      null
     );
   }
   await wham<unknown>(`/files/${reg.file_id}/uploaded`, {
@@ -415,7 +434,7 @@ export async function uploadImage(opts: {
 
 function imageDimensions(
   buf: Uint8Array | Buffer,
-  mime: string,
+  mime: string
 ): { width: number; height: number } {
   const b = buf instanceof Buffer ? buf : Buffer.from(buf);
   if (mime === "image/png" && b.length >= 24 && b.subarray(1, 4).toString() === "PNG") {
@@ -429,7 +448,9 @@ function imageDimensions(
   ) {
     let i = 2;
     while (i + 8 < b.length) {
-      if (b[i] !== 0xff) break;
+      if (b[i] !== 0xff) {
+        break;
+      }
       const marker = b[i + 1];
       const segLen = b.readUInt16BE(i + 2);
       if (
@@ -451,15 +472,15 @@ function imageDimensions(
   }
   if (mime === "image/webp" && b.length >= 30 && b.subarray(0, 4).toString() === "RIFF") {
     if (b.subarray(12, 16).toString() === "VP8 ") {
-      return { width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
+      return { width: b.readUInt16LE(26) & 0x3f_ff, height: b.readUInt16LE(28) & 0x3f_ff };
     }
     if (b.subarray(12, 16).toString() === "VP8L") {
       const bits = b.readUInt32LE(21);
-      return { width: (bits & 0x3fff) + 1, height: ((bits >> 14) & 0x3fff) + 1 };
+      return { width: (bits & 0x3f_ff) + 1, height: ((bits >> 14) & 0x3f_ff) + 1 };
     }
     if (b.subarray(12, 16).toString() === "VP8X") {
-      const w = ((b[24] | (b[25] << 8) | (b[26] << 16)) & 0xffffff) + 1;
-      const h = ((b[27] | (b[28] << 8) | (b[29] << 16)) & 0xffffff) + 1;
+      const w = ((b[24] | (b[25] << 8) | (b[26] << 16)) & 0xff_ff_ff) + 1;
+      const h = ((b[27] | (b[28] << 8) | (b[29] << 16)) & 0xff_ff_ff) + 1;
       return { width: w, height: h };
     }
   }
@@ -468,10 +489,10 @@ function imageDimensions(
 
 export interface CreateTaskOptions {
   accessToken: string;
-  environmentId: string;
   branch: string;
-  text: string;
+  environmentId: string;
   images?: ImageInput[];
+  text: string;
 }
 
 export async function createTask(opts: CreateTaskOptions): Promise<WhamCreateResult> {
@@ -516,10 +537,10 @@ export async function createTask(opts: CreateTaskOptions): Promise<WhamCreateRes
 
 export interface FollowUpOptions {
   accessToken: string;
-  taskId: string;
-  previousTurnId: string;
-  text: string;
   images?: ImageInput[];
+  previousTurnId: string;
+  taskId: string;
+  text: string;
 }
 
 export async function followUp(opts: FollowUpOptions): Promise<WhamCreateResult> {
@@ -562,14 +583,6 @@ export async function followUp(opts: FollowUpOptions): Promise<WhamCreateResult>
 }
 
 interface RawTask {
-  task: {
-    id: string;
-    title: string;
-    task_status_display?: {
-      latest_turn_status_display?: { turn_status?: string };
-    };
-    external_pull_requests?: Array<{ url?: string }>;
-  };
   current_assistant_turn?: {
     id?: string;
     output_items?: Array<
@@ -578,6 +591,14 @@ interface RawTask {
     >;
     error?: unknown;
     pull_request_data?: { url?: string } | null;
+  };
+  task: {
+    id: string;
+    title: string;
+    task_status_display?: {
+      latest_turn_status_display?: { turn_status?: string };
+    };
+    external_pull_requests?: Array<{ url?: string }>;
   };
 }
 
@@ -600,16 +621,21 @@ export async function pollTask(accessToken: string, taskId: string): Promise<Wha
     .trim();
   let prUrl: string | null = null;
   const prData = raw.current_assistant_turn?.pull_request_data;
-  if (prData && typeof prData.url === "string") prUrl = prData.url;
+  if (prData && typeof prData.url === "string") {
+    prUrl = prData.url;
+  }
   if (!prUrl) {
     const ext = raw.task.external_pull_requests?.find((p) => typeof p.url === "string");
-    if (ext?.url) prUrl = ext.url;
+    if (ext?.url) {
+      prUrl = ext.url;
+    }
   }
   let errorMsg: string | null = null;
   const err = raw.current_assistant_turn?.error;
   if (err) {
-    if (typeof err === "string") errorMsg = err;
-    else if (
+    if (typeof err === "string") {
+      errorMsg = err;
+    } else if (
       typeof err === "object" &&
       err &&
       "message" in err &&
@@ -625,10 +651,10 @@ export async function pollTask(accessToken: string, taskId: string): Promise<Wha
 
 export interface WaitForReplyOptions {
   accessToken: string;
-  taskId: string;
-  timeoutMs?: number;
   intervalMs?: number;
   onProgress?: (status: string) => void;
+  taskId: string;
+  timeoutMs?: number;
 }
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "errored"]);
@@ -641,8 +667,12 @@ export async function waitForReply(opts: WaitForReplyOptions): Promise<WhamReply
   while (Date.now() - start < timeout) {
     const reply = await pollTask(opts.accessToken, opts.taskId);
     last = reply;
-    if (opts.onProgress) opts.onProgress(reply.status);
-    if (TERMINAL_STATUSES.has(reply.status)) return reply;
+    if (opts.onProgress) {
+      opts.onProgress(reply.status);
+    }
+    if (TERMINAL_STATUSES.has(reply.status)) {
+      return reply;
+    }
     await new Promise((r) => setTimeout(r, interval));
   }
   return (

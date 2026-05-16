@@ -1,20 +1,4 @@
 {
-  "name": "codex",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "next dev",
-    "dev:bridge": "bun --watch bridge/index.ts",
-    "build": "next build",
-    "start": "next start -p ${PORT:-3000}",
-    "start:bridge": "bun bridge/index.ts",
-    "entrypoint": "bun scripts/entrypoint.ts",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit"
-  },
   "dependencies": {
     "@photon-ai/uri": "^0.2.1",
     "better-auth": "^1.2.0",
@@ -36,7 +20,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "2.4.15",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",
@@ -44,6 +28,25 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.0"
-  }
+    "typescript": "^5.7.0",
+    "ultracite": "7.7.0"
+  },
+  "name": "codex",
+  "scripts": {
+    "dev": "next dev",
+    "dev:bridge": "bun --watch bridge/index.ts",
+    "build": "next build",
+    "start": "next start -p ${PORT:-3000}",
+    "start:bridge": "bun bridge/index.ts",
+    "entrypoint": "bun scripts/entrypoint.ts",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "check": "ultracite check",
+    "fix": "ultracite fix"
+  },
+  "type": "module",
+  "version": "0.1.0",
+  "private": true
 }

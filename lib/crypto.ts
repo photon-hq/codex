@@ -4,7 +4,9 @@ const ALGO = "aes-256-gcm";
 
 function masterKey(): Buffer {
   const hex = process.env.MASTER_KEY;
-  if (!hex) throw new Error("MASTER_KEY is not set");
+  if (!hex) {
+    throw new Error("MASTER_KEY is not set");
+  }
   if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
     throw new Error("MASTER_KEY must be a 32-byte (64-char) hex string");
   }

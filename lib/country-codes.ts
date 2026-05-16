@@ -5,15 +5,17 @@ import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 countries.registerLocale(en);
 
 export interface Country {
-  iso: string;
-  name: string;
   dial: string;
   flag: string;
+  iso: string;
+  name: string;
 }
 
 function flagFromIso(iso: string): string {
-  if (!/^[A-Z]{2}$/.test(iso)) return "";
-  const A = 0x1f1e6;
+  if (!/^[A-Z]{2}$/.test(iso)) {
+    return "";
+  }
+  const A = 0x1_f1_e6;
   return String.fromCodePoint(A + (iso.charCodeAt(0) - 65), A + (iso.charCodeAt(1) - 65));
 }
 
@@ -60,7 +62,9 @@ export function bestMatchByDial(dial: string): Country | undefined {
   const iso = primary[dial];
   if (iso) {
     const hit = findByIso(iso);
-    if (hit) return hit;
+    if (hit) {
+      return hit;
+    }
   }
   return COUNTRIES.find((c) => c.dial === dial);
 }

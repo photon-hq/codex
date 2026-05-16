@@ -1,5 +1,5 @@
-import { getBridgeManager } from "@/bridge/manager";
 import { NextResponse } from "next/server";
+import { getBridgeManager } from "@/bridge/manager";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

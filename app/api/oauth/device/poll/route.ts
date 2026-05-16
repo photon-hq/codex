@@ -1,6 +1,6 @@
-import { getSession, pollDeviceToken } from "@/lib/spectrum";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { getSession, pollDeviceToken } from "@/lib/spectrum";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export async function POST() {
   if (!deviceCode) {
     return NextResponse.json(
       { status: "error", reason: "no device flow in progress" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -23,7 +23,7 @@ export async function POST() {
     const host = process.env.SPECTRUM_API_HOST ?? "<unset>";
     return NextResponse.json(
       { status: "error", reason: `Couldn't reach Spectrum at ${host}` },
-      { status: 502 },
+      { status: 502 }
     );
   }
 

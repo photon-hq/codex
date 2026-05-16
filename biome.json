@@ -1,7 +1,14 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
-  "files": { "ignoreUnknown": false, "ignore": [".next", "node_modules", ".env*"] },
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": ["!.next", "!node_modules", "!.env*"]
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -12,13 +19,32 @@
     "enabled": true,
     "rules": {
       "recommended": true,
-      "style": { "noNonNullAssertion": "off" },
-      "suspicious": { "noExplicitAny": "warn" }
+      "style": {
+        "noNonNullAssertion": "off",
+        "noParameterProperties": "off",
+        "useReadonlyClassProperties": "off",
+        "noNestedTernary": "off",
+        "useDefaultSwitchClause": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noEmptyBlockStatements": "off",
+        "noBitwiseOperators": "off"
+      },
+      "complexity": {
+        "noVoid": "off",
+        "noExcessiveCognitiveComplexity": "off"
+      },
+      "performance": {
+        "useTopLevelRegex": "off",
+        "noNamespaceImport": "off",
+        "noImgElement": "off"
+      }
     }
   },
   "overrides": [
     {
-      "include": ["components/country-dial-picker.tsx"],
+      "includes": ["components/country-dial-picker.tsx"],
       "linter": {
         "rules": {
           "a11y": {
@@ -27,7 +53,27 @@
           }
         }
       }
+    },
+    {
+      "includes": ["app/api/**/route.ts", "lib/spectrum.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "useAwait": "off"
+          }
+        }
+      }
     }
   ],
-  "javascript": { "formatter": { "quoteStyle": "double", "semicolons": "always" } }
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always"
+    }
+  },
+  "extends": [
+    "ultracite/biome/core",
+    "ultracite/biome/react",
+    "ultracite/biome/next"
+  ]
 }

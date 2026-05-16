@@ -11,7 +11,9 @@ export function ConnectCta() {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
-    if (busy) return;
+    if (busy) {
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch("/api/tenant/me", { cache: "no-store" });
@@ -33,14 +35,14 @@ export function ConnectCta() {
 
   return (
     <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
       className="btn-pill-primary inline-flex items-center justify-center disabled:cursor-progress"
+      disabled={busy}
+      onClick={onClick}
+      type="button"
     >
-      {busy ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
+      {busy ? <Loader2 className="mr-1.5 animate-spin" size={14} /> : null}
       {LABEL}
-      {!busy && <ArrowRight size={14} className="ml-1.5" />}
+      {!busy && <ArrowRight className="ml-1.5" size={14} />}
     </button>
   );
 }
