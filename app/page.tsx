@@ -1,10 +1,10 @@
-import { CodexIcon, GitHubPill, TopNav } from "@/components/chrome";
+import { CodexIcon, TopNav } from "@/components/chrome";
 import { ConnectCta } from "@/components/connect-cta";
 
 export default function HomePage() {
   return (
     <main className="relative flex flex-1 flex-col">
-      <TopNav right={<GitHubPill />} />
+      <TopNav right={<span />} />
       <Hero />
     </main>
   );
