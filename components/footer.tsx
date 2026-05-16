@@ -10,7 +10,7 @@ const NOTICE_URL = "https://github.com/photon-hq/codex/blob/main/docs/NOTICE.md"
 export function Footer() {
   return (
     <div className="relative z-10 mt-auto flex w-full flex-col">
-      <div className="flex w-full items-center justify-center px-6 py-4 sm:px-10">
+      <div className="flex w-full items-center justify-center px-6 py-3 sm:px-10 sm:py-4">
         <a
           aria-label="View on GitHub"
           className="inline-flex items-center gap-1.5 font-medium text-[12.5px] text-[var(--color-text-muted)] tracking-[-0.005em] transition-colors hover:text-[var(--color-text)]"
@@ -22,11 +22,11 @@ export function Footer() {
           View on GitHub
         </a>
       </div>
-      <footer className="border-white/10 border-t bg-[#1a1a19] px-6 py-2.5 text-white sm:px-10">
-        <div className="mx-auto grid w-full max-w-screen-2xl grid-cols-[1fr_auto_1fr] items-center gap-4">
+      <footer className="border-white/10 border-t bg-[#1a1a19] px-6 py-3 text-white sm:px-10 sm:py-2.5">
+        <div className="mx-auto flex w-full max-w-screen-2xl flex-col items-center gap-2.5 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:gap-4">
           <a
             aria-label="Powered by photon"
-            className="group inline-flex w-fit items-center gap-2 justify-self-start text-[12.5px] text-white/55 tracking-[-0.005em] transition-colors hover:text-white"
+            className="group inline-flex items-center gap-2 whitespace-nowrap text-[12.5px] text-white/55 tracking-[-0.005em] transition-colors hover:text-white sm:justify-self-start"
             href={PHOTON_URL}
             rel="noopener noreferrer"
             target="_blank"
@@ -40,14 +40,14 @@ export function Footer() {
               width={56}
             />
           </a>
-          <div className="flex items-center gap-x-5 justify-self-center text-[12.5px] text-white/55 tracking-[-0.005em]">
+          <div className="flex items-center gap-x-5 text-[12.5px] text-white/55 tracking-[-0.005em] sm:justify-self-center">
             <FooterLink href={TERMS_URL}>Terms</FooterLink>
             <FooterLink href={PRIVACY_URL}>Privacy</FooterLink>
             <FooterLink href={NOTICE_URL}>Notice</FooterLink>
           </div>
           <a
             aria-label="Join our Discord"
-            className="inline-flex items-center justify-center justify-self-end text-white/55 transition-colors hover:text-white"
+            className="inline-flex items-center justify-center text-white/55 transition-colors hover:text-white sm:justify-self-end"
             href={DISCORD_URL}
             rel="noopener noreferrer"
             target="_blank"
