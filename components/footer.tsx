@@ -22,8 +22,8 @@ export function Footer() {
           View on GitHub
         </a>
       </div>
-      <footer className="border-white/10 border-t bg-[#1a1a19] px-6 py-3 text-white sm:px-10 sm:py-2.5">
-        <div className="mx-auto flex w-full max-w-screen-2xl flex-col items-center gap-2.5 sm:grid sm:grid-cols-[1fr_auto_1fr] sm:gap-4">
+      <footer className="border-white/10 border-t bg-[#1a1a19] px-5 py-2.5 text-white sm:px-10">
+        <div className="mx-auto flex w-full max-w-screen-2xl items-center justify-between gap-4 sm:grid sm:grid-cols-[1fr_auto_1fr]">
           <a
             aria-label="Powered by photon"
             className="group inline-flex items-center gap-2 whitespace-nowrap text-[12.5px] text-white/55 tracking-[-0.005em] transition-colors hover:text-white sm:justify-self-start"
@@ -40,7 +40,7 @@ export function Footer() {
               width={56}
             />
           </a>
-          <div className="flex items-center gap-x-5 text-[12.5px] text-white/55 tracking-[-0.005em] sm:justify-self-center">
+          <div className="hidden items-center gap-x-5 text-[12.5px] text-white/55 tracking-[-0.005em] sm:inline-flex sm:justify-self-center">
             <FooterLink href={TERMS_URL}>Terms</FooterLink>
             <FooterLink href={PRIVACY_URL}>Privacy</FooterLink>
             <FooterLink href={NOTICE_URL}>Notice</FooterLink>
