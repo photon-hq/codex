@@ -132,10 +132,6 @@ export default function DashboardClient() {
               <CodexIcon size="clamp(52px, 6vw, 60px)" radius="16px" />
             </div>
 
-            <div className="fade-up fade-up-3 mt-6 inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
-              <span className="dot dot-ok m-0" /> Active
-            </div>
-
             <h1 className="fade-up fade-up-4 mt-6 font-mono text-[clamp(32px,5.2vw,44px)] font-medium leading-none tracking-[-0.02em] text-[var(--color-text)]">
               <CopyableNumber number={t.phoneNumber} />
             </h1>
