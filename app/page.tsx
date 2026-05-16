@@ -24,14 +24,6 @@ function Hero() {
       </p>
       <div className="fade-up fade-up-4 mt-7 flex flex-col items-center gap-3 sm:mt-8">
         <ConnectCta />
-        <a
-          href="https://github.com/photon-hq/codex"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[13px] font-medium tracking-[-0.01em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-        >
-          Open source on GitHub &rarr;
-        </a>
       </div>
     </section>
   );
