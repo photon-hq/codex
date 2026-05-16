@@ -50,16 +50,16 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     color: var(--color-text);
-    /* Match Safari chrome (top notch + bottom toolbar overscroll) to the dark
-       footer color so the live gradient/video center floats cleanly between
-       two matching strips instead of clashing with lavender. */
+    /* Match Safari chrome, safe areas, and overscroll to the footer color. */
     background: #1a1a19;
     text-rendering: optimizeSpeed;
   }
 
   body {
     min-height: 100vh;
+    min-height: 100dvh;
     color: var(--color-text);
+    background: #1a1a19;
   }
 
   ::selection {
@@ -101,27 +101,18 @@
 @layer components {
   .hero-bg {
     position: relative;
-    overflow: hidden;
-    background:
-      radial-gradient(ellipse 80% 50% at 50% 0%, #d6c9ff 0%, transparent 60%),
-      radial-gradient(ellipse 60% 45% at 88% 38%, #b6c4ff 0%, transparent 60%),
-      radial-gradient(ellipse 55% 50% at 12% 28%, #c8b7ff 0%, transparent 65%),
-      radial-gradient(ellipse 90% 70% at 50% 95%, #8caaff 0%, transparent 60%),
-      #b9b2ff;
+    overflow-x: hidden;
+    background: #1a1a19;
     isolation: isolate;
   }
   .hero-bg::after {
-    position: absolute;
+    position: fixed;
     inset: auto 0 0 0;
-    z-index: -1;
+    z-index: 1;
     height: 96px;
     pointer-events: none;
     content: "";
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      rgba(255, 255, 255, 0.22)
-    );
+    background: linear-gradient(to bottom, transparent, rgba(26, 26, 25, 0.18));
   }
 
   @keyframes fade-up {
