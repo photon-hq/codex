@@ -31,12 +31,21 @@ export const metadata: Metadata = {
       "A coding agent that helps you build and ship with AI, powered by ChatGPT, now on iMessage.",
     url: "/",
     siteName: "Codex on iMessage",
+    images: [
+      {
+        url: "/og.jpg",
+        width: 1024,
+        height: 576,
+        alt: "Codex on iMessage",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Codex on iMessage",
     description:
       "A coding agent that helps you build and ship with AI, powered by ChatGPT, now on iMessage.",
+    images: ["/og.jpg"],
   },
 };
 
