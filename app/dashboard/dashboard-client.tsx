@@ -120,7 +120,7 @@ export default function DashboardClient() {
     <>
       <TopNav left={<BackHomePill />} right={<span />} />
       <main className="relative flex flex-1 flex-col">
-        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-5 pb-20 pt-10 sm:px-8 sm:pt-16">
+        <div className="safe-bottom flex w-full flex-1 flex-col items-center px-5 pb-10 pt-10 sm:px-8 sm:pt-16">
           <div className="flex w-full max-w-[480px] flex-col items-center text-center">
             <div className="fade-up fade-up-2">
               <CodexIcon size="clamp(52px, 6vw, 60px)" radius="16px" />
@@ -152,42 +152,42 @@ export default function DashboardClient() {
                 </p>
               </div>
             )}
+          </div>
 
-            <div className="fade-up fade-up-7 mt-10 flex w-full items-center justify-center">
-              {!confirmDisconnect ? (
+          <div className="fade-up fade-up-7 mt-auto flex w-full items-center justify-center pt-12">
+            {!confirmDisconnect ? (
+              <button
+                type="button"
+                onClick={() => setConfirmDisconnect(true)}
+                className="btn-pill-primary inline-flex items-center justify-center"
+              >
+                Disconnect
+                <Trash2 size={14} className="ml-1.5" />
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setConfirmDisconnect(true)}
-                  className="btn-pill-primary inline-flex items-center justify-center"
+                  onClick={disconnect}
+                  disabled={disconnecting}
+                  className="btn-pill-primary inline-flex items-center justify-center disabled:cursor-progress"
                 >
-                  Disconnect
-                  <Trash2 size={14} className="ml-1.5" />
+                  {disconnecting ? (
+                    <Loader2 size={14} className="mr-1.5 animate-spin" />
+                  ) : null}
+                  {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
+                  {!disconnecting && <Trash2 size={14} className="ml-1.5" />}
                 </button>
-              ) : (
-                <div className="inline-flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={disconnect}
-                    disabled={disconnecting}
-                    className="btn-pill-primary inline-flex items-center justify-center disabled:cursor-progress"
-                  >
-                    {disconnecting ? (
-                      <Loader2 size={14} className="mr-1.5 animate-spin" />
-                    ) : null}
-                    {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
-                    {!disconnecting && <Trash2 size={14} className="ml-1.5" />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDisconnect(false)}
-                    disabled={disconnecting}
-                    className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-            </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDisconnect(false)}
+                  disabled={disconnecting}
+                  className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </main>
