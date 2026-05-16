@@ -292,7 +292,6 @@ export async function POST(req: Request) {
         codexAccountId: pending.account_id ?? null,
         codexUserEmail: pending.email ?? null,
         codexEnvironmentId,
-        codexModel: process.env.CODEX_MODEL ?? "gpt-5-codex",
       })
       .returning();
 

@@ -28,7 +28,6 @@ export async function GET() {
       codexEnvironmentId: tenants.codexEnvironmentId,
       codexEnvironmentBranch: tenants.codexEnvironmentBranch,
       codexLinked: tenants.codexRefreshCiphertext,
-      codexModel: tenants.codexModel,
       status: tenants.status,
       createdAt: tenants.createdAt,
     })

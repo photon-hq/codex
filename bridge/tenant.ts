@@ -1,5 +1,12 @@
 import { getDb } from "@/db/client";
-import { events, type Tenant, codexThreads, tenants } from "@/db/schema";
+import {
+  events,
+  type BatchQueueRow,
+  type Tenant,
+  batchQueue,
+  codexThreads,
+  tenants,
+} from "@/db/schema";
 import {
   CodexCloudError,
   type ImageInput,
@@ -13,7 +20,7 @@ import {
   waitForReply,
 } from "@/lib/codex-cloud";
 import { decrypt, encrypt } from "@/lib/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type Message, type Space, Spectrum, richlink } from "spectrum-ts";
 import { imessage } from "spectrum-ts/providers/imessage";
 
@@ -21,7 +28,6 @@ const RESET_REACTION = "👍";
 const ACK_REACTION = "👍";
 const DONE_REACTION = "❤️";
 const CONNECT_ENVIRONMENTS_URL = "https://chatgpt.com/codex/settings/environments";
-const CODEX_MODEL_PICKER_URL = "https://chatgpt.com/codex";
 const MIN_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
@@ -34,6 +40,10 @@ const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 // stalled.
 const BATCH_DEBOUNCE_MS = 5_000;
 const BATCH_MAX_MS = 20_000;
+// If a dispatch claimed rows but never deleted them, treat the claim as
+// abandoned after 5 minutes and re-queue. Longer than any realistic Codex
+// task, shorter than a typical user "wait, did this work?" patience window.
+const STALE_DISPATCH_MS = 5 * 60_000;
 const SUPPORTED_IMAGE_MIME = new Set([
   "image/png",
   "image/jpeg",
@@ -41,10 +51,6 @@ const SUPPORTED_IMAGE_MIME = new Set([
   "image/gif",
   "image/webp",
 ]);
-// Codex picks the model on the chatgpt.com side (per-task). The public
-// /wham/tasks POST body does not accept a model field today, so we surface
-// the canonical picker rather than pretending we can switch it from chat.
-const AVAILABLE_MODELS = ["gpt-5-codex", "gpt-5", "gpt-5-mini"] as const;
 const BRANCH_RE = /^[A-Za-z0-9._\-/]{1,200}$/;
 const INTRO_TRIGGERS = new Set([
   "hey! tell me how to use codex in imessage",
@@ -81,28 +87,20 @@ function flattenContent(top: MessageContent): MessageContent[] {
   return [top];
 }
 
-interface PreparedInput {
-  text: string;
-  images: ImageInput[];
-  unsupportedAttachments: number;
-}
-
 type ReplyableMessage = Message & {
   reply: (text: string) => Promise<unknown>;
   react?: (key: string) => Promise<unknown>;
+  sender?: { id?: string } | undefined;
 };
 
-interface BatchedItem {
-  m: ReplyableMessage;
-  content: MessageContent;
-  bodyText: string;
-}
-
+// In-memory bookkeeping for a per-space debounce window. The *actual* messages
+// live in the `batch_queue` Postgres table so they survive worker restarts.
+// This map only holds timers and a reference to the live head Message so we
+// can land the heart tapback on the right bubble.
 interface PendingBatch {
   spaceId: string;
   space: Space<unknown>;
-  items: BatchedItem[];
-  voiceCount: number;
+  headM: ReplyableMessage;
   debounceTimer: ReturnType<typeof setTimeout>;
   hardTimer: ReturnType<typeof setTimeout>;
   flushing: boolean;
@@ -263,6 +261,12 @@ export class TenantWorker {
     );
     await this.logEvent("status", "subscribed", { phoneNumber: this.tenant.phoneNumber });
 
+    // Replay any in-flight batches whose worker died mid-dispatch. Fire-and-
+    // forget — we don't want to block the message loop while Codex catches up.
+    void this.recoverOrphanedBatches().catch((err) => {
+      console.error(`[tenant ${this.tenant.id}] orphan recovery failed:`, err);
+    });
+
     try {
       for await (const [space, message] of app.messages) {
         if (this.stopRequested) break;
@@ -295,11 +299,7 @@ export class TenantWorker {
     }
   }
 
-  private async routeContent(
-    space: Space<unknown>,
-    m: ReplyableMessage,
-    content: MessageContent,
-  ) {
+  private async routeContent(space: Space<unknown>, m: ReplyableMessage, content: MessageContent) {
     // Reactions / polls / contacts / richlinks: we ack via log but never
     // forward to Codex. Reactions on bot replies arrive here too and stay silent.
     if (content.type === "reaction") {
@@ -318,7 +318,7 @@ export class TenantWorker {
       const url = typeof content.url === "string" ? content.url : null;
       await this.logEvent("in", "richlink", { url });
       const bodyText = url ? `Reference link: ${url}` : "";
-      if (bodyText) this.enqueueForBatch(space, m, content, bodyText);
+      if (bodyText) await this.enqueueForBatch(space, m, content, bodyText);
       return;
     }
 
@@ -354,12 +354,10 @@ export class TenantWorker {
       return;
     }
 
-    // Voice, attachments (incl. stickers), text → queue into the per-space
-    // batch so a caption + photo land on Codex as one task.
-    this.enqueueForBatch(space, m, content, bodyText);
+    await this.enqueueForBatch(space, m, content, bodyText);
   }
 
-  private enqueueForBatch(
+  private async enqueueForBatch(
     space: Space<unknown>,
     m: ReplyableMessage,
     content: MessageContent,
@@ -368,11 +366,49 @@ export class TenantWorker {
     if (m.react) {
       m.react(ACK_REACTION).catch(() => {});
     }
+    // Eagerly upload images during the debounce window. This way the image is
+    // durable on Codex's side before we'd want to dispatch, and a worker
+    // restart can replay using only the persisted ImageInput payload.
+    let kind: "text" | "image" | "voice" | "skipped" = "text";
+    let imagePayload: ImageInput | null = null;
+    if (content.type === "voice") {
+      kind = "voice";
+    } else if (content.type === "attachment") {
+      const uploaded = await this.tryUploadAttachment(content).catch(() => null);
+      if (uploaded) {
+        kind = "image";
+        imagePayload = uploaded;
+      } else {
+        kind = "skipped";
+      }
+    } else if (bodyText) {
+      kind = "text";
+    } else {
+      // Nothing actionable (e.g. an effect with no inner content). Skip.
+      return;
+    }
+
+    try {
+      await getDb()
+        .insert(batchQueue)
+        .values({
+          tenantId: this.tenant.id,
+          spaceId: space.id,
+          kind,
+          bodyText: bodyText || null,
+          imagePayload: imagePayload as unknown as Record<string, unknown> | null,
+          spectrumMessageId: m.id ?? null,
+          senderId: m.sender?.id ?? null,
+        });
+    } catch (err) {
+      console.error(`[tenant ${this.tenant.id}] enqueue persist failed:`, err);
+      // Fall through and continue with in-memory only behavior; better to
+      // attempt a reply than silently drop.
+    }
+
     const existing = this.pendingBatches.get(space.id);
     if (existing) {
       clearTimeout(existing.debounceTimer);
-      existing.items.push({ m, content, bodyText });
-      if (content.type === "voice") existing.voiceCount += 1;
       existing.debounceTimer = setTimeout(() => {
         void this.flushBatch(space.id);
       }, BATCH_DEBOUNCE_MS);
@@ -381,8 +417,7 @@ export class TenantWorker {
     const batch: PendingBatch = {
       spaceId: space.id,
       space,
-      items: [{ m, content, bodyText }],
-      voiceCount: content.type === "voice" ? 1 : 0,
+      headM: m,
       debounceTimer: setTimeout(() => {
         void this.flushBatch(space.id);
       }, BATCH_DEBOUNCE_MS),
@@ -409,60 +444,126 @@ export class TenantWorker {
 
   private async flushBatch(spaceId: string) {
     const batch = this.pendingBatches.get(spaceId);
-    if (!batch || batch.flushing) return;
-    batch.flushing = true;
-    clearTimeout(batch.debounceTimer);
-    clearTimeout(batch.hardTimer);
-    this.pendingBatches.delete(spaceId);
+    if (batch?.flushing) return;
+    if (batch) {
+      batch.flushing = true;
+      clearTimeout(batch.debounceTimer);
+      clearTimeout(batch.hardTimer);
+      this.pendingBatches.delete(spaceId);
+    }
+
+    let rows: BatchQueueRow[] = [];
     try {
-      await this.dispatchBatch(batch);
+      rows = await this.claimQueuedRows(spaceId);
+    } catch (err) {
+      console.error(`[tenant ${this.tenant.id}] claim rows failed:`, err);
+      return;
+    }
+
+    if (rows.length === 0) return;
+
+    try {
+      await this.dispatchBatch(rows, batch?.space, batch?.headM);
     } catch (err) {
       console.error(`[tenant ${this.tenant.id}] batch dispatch failed:`, err);
+    } finally {
+      // Regardless of outcome — success or final error reply to the user —
+      // drop the rows. They've been handled. (If the process died mid-flight
+      // before this `finally`, the startup-scan in subscribe() resets stale
+      // dispatched_at claims and they retry.)
+      await this.deleteRows(rows).catch((err) => {
+        console.error(`[tenant ${this.tenant.id}] delete rows failed:`, err);
+      });
     }
   }
 
-  private async dispatchBatch(batch: PendingBatch) {
-    const first = batch.items[0];
-    if (!first) return;
-    const space = batch.space;
-    const headM = first.m;
+  private async claimQueuedRows(spaceId: string): Promise<BatchQueueRow[]> {
+    const db = getDb();
+    const claimed = await db
+      .update(batchQueue)
+      .set({ dispatchedAt: new Date() })
+      .where(
+        and(
+          eq(batchQueue.tenantId, this.tenant.id),
+          eq(batchQueue.spaceId, spaceId),
+          isNull(batchQueue.dispatchedAt),
+        ),
+      )
+      .returning();
+    return claimed.sort((a, b) => a.receivedAt.getTime() - b.receivedAt.getTime());
+  }
+
+  private async deleteRows(rows: BatchQueueRow[]) {
+    if (rows.length === 0) return;
+    const db = getDb();
+    await db.delete(batchQueue).where(
+      inArray(
+        batchQueue.id,
+        rows.map((r) => r.id),
+      ),
+    );
+  }
+
+  private async dispatchBatch(
+    rows: BatchQueueRow[],
+    space: Space<unknown> | undefined,
+    headM: ReplyableMessage | undefined,
+  ) {
+    if (rows.length === 0) return;
+
+    // If we lost the live space (worker restart replay), reconstruct one from
+    // the persisted spaceId via the iMessage provider. The chat thread on the
+    // device is keyed by spaceId, so a fresh `space.send()` lands in the right
+    // conversation even without a Message handle.
+    const liveSpace = space ?? (await this.resolveSpace(rows));
+    if (!liveSpace) {
+      console.warn(
+        `[tenant ${this.tenant.id}] could not resolve space ${rows[0].spaceId} for replay`,
+      );
+      return;
+    }
 
     const texts: string[] = [];
     const images: ImageInput[] = [];
+    let voiceCount = 0;
     let unsupportedAttachments = 0;
-
-    for (const item of batch.items) {
-      if (item.bodyText) texts.push(item.bodyText);
-      const prepared = await this.prepareInput(item.content, "");
-      if (prepared.images.length) images.push(...prepared.images);
-      unsupportedAttachments += prepared.unsupportedAttachments;
+    for (const row of rows) {
+      if (row.kind === "text" && row.bodyText) texts.push(row.bodyText);
+      else if (row.kind === "image" && row.imagePayload) {
+        images.push(row.imagePayload as unknown as ImageInput);
+      } else if (row.kind === "voice") voiceCount += 1;
+      else if (row.kind === "skipped") unsupportedAttachments += 1;
     }
 
     const mergedText = texts.join("\n\n").trim();
-    const voiceOnly = batch.voiceCount > 0 && !mergedText && images.length === 0;
+    const replayHint = !headM ? "(Picking up where we left off after a restart.) " : "";
+
+    const voiceOnly = voiceCount > 0 && !mergedText && images.length === 0;
     if (voiceOnly) {
-      space.stopTyping().catch(() => {});
-      await headM.reply(
-        "Voice notes aren't supported yet — send the same idea as text or a screenshot and I'll take it from there.",
-      );
-      if (headM.react) {
-        headM.react(DONE_REACTION).catch(() => {});
+      liveSpace.stopTyping().catch(() => {});
+      const reply = `${replayHint}Voice notes aren't supported yet — send the same idea as text or a screenshot and I'll take it from there.`;
+      if (headM) {
+        await headM.reply(reply);
+        if (headM.react) headM.react(DONE_REACTION).catch(() => {});
+      } else {
+        await liveSpace.send(reply);
       }
-      await this.logEvent("in", "voice_only", { count: batch.voiceCount });
+      await this.logEvent("in", "voice_only", { count: voiceCount, replay: !headM });
       return;
     }
 
     if (!mergedText && images.length === 0) {
-      space.stopTyping().catch(() => {});
+      liveSpace.stopTyping().catch(() => {});
       return;
     }
 
     const started = Date.now();
     try {
-      await space.responding(async () => {
+      await liveSpace.responding(async () => {
         const { accessToken, environmentId } = await this.ensureAccessAndEnv();
-        const existing = await this.getThread(space.id);
-        const inputText = mergedText || "What's in this image?";
+        const existing = await this.getThread(liveSpace.id);
+        const inputText =
+          replayHint + (mergedText || (images.length > 0 ? "What's in this image?" : ""));
         let result: Awaited<ReturnType<typeof createTask>> | Awaited<ReturnType<typeof followUp>>;
         if (existing?.lastTurnId) {
           result = await followUp({
@@ -484,10 +585,10 @@ export class TenantWorker {
 
         const reply = await waitForReply({ accessToken, taskId: result.task.id });
         const turnId = reply.current_turn_id ?? result.current_turn_id;
-        await this.upsertThread(space.id, result.task.id, turnId);
+        await this.upsertThread(liveSpace.id, result.task.id, turnId);
 
         const voiceFooter =
-          batch.voiceCount > 0 && (mergedText || images.length > 0)
+          voiceCount > 0 && (mergedText || images.length > 0)
             ? "(Voice notes aren't processed yet — send the gist as text and I'll act on it.)"
             : null;
         const composed = composeReply(
@@ -498,14 +599,17 @@ export class TenantWorker {
           voiceFooter,
         );
         const [firstChunk, ...restChunks] = composed.chunks;
-        if (firstChunk !== undefined) await headM.reply(firstChunk);
+        if (firstChunk !== undefined) {
+          if (headM) await headM.reply(firstChunk);
+          else await liveSpace.send(firstChunk);
+        }
         for (const chunk of restChunks) {
-          await space.send(chunk);
+          await liveSpace.send(chunk);
         }
         if (composed.prUrl) {
-          await space.send(richlink(composed.prUrl));
+          await liveSpace.send(richlink(composed.prUrl));
         }
-        if (headM.react) {
+        if (headM?.react) {
           headM.react(DONE_REACTION).catch(() => {});
         }
         await this.logEvent("out", "reply", {
@@ -513,39 +617,85 @@ export class TenantWorker {
           status: reply.status,
           inLen: inputText.length,
           imageCount: images.length,
-          batchSize: batch.items.length,
-          voiceCount: batch.voiceCount,
+          batchSize: rows.length,
+          voiceCount,
           outLen: composed.chunks.reduce((n, c) => n + c.length, 0),
           chunkCount: composed.chunks.length,
+          replay: !headM,
           latencyMs: Date.now() - started,
         });
       });
     } catch (err) {
       console.error(`[tenant ${this.tenant.id}] codex error:`, err);
-      if (err instanceof CodexCloudError && err.status === 412) {
-        await headM.reply(
-          "Connect a GitHub repo to Codex before texting — I need an environment to run in.",
-        );
-        await space.send(richlink(CONNECT_ENVIRONMENTS_URL));
-      } else {
-        await headM.reply(friendlyError(err));
+      const errorText =
+        err instanceof CodexCloudError && err.status === 412
+          ? "Connect a GitHub repo to Codex before texting — I need an environment to run in."
+          : friendlyError(err);
+      try {
+        if (headM) await headM.reply(errorText);
+        else await liveSpace.send(errorText);
+        if (err instanceof CodexCloudError && err.status === 412) {
+          await liveSpace.send(richlink(CONNECT_ENVIRONMENTS_URL));
+        }
+      } catch (replyErr) {
+        console.error(`[tenant ${this.tenant.id}] error reply failed:`, replyErr);
       }
       await this.logEvent("error", "codex", {
         error: serializeError(err),
+        replay: !headM,
         latencyMs: Date.now() - started,
       });
     }
   }
 
-  private async prepareInput(content: MessageContent, bodyText: string): Promise<PreparedInput> {
-    const images: ImageInput[] = [];
-    let unsupportedAttachments = 0;
-    if (content.type === "attachment" && content.read && content.mimeType) {
-      const attached = await this.tryUploadAttachment(content);
-      if (attached) images.push(attached);
-      else unsupportedAttachments += 1;
+  private async resolveSpace(rows: BatchQueueRow[]): Promise<Space<unknown> | undefined> {
+    if (!this.app) return undefined;
+    const senderId = rows.find((r) => r.senderId)?.senderId;
+    if (!senderId) return undefined;
+    try {
+      const im = imessage(this.app);
+      const user = await im.user(senderId);
+      return await im.space(user);
+    } catch (err) {
+      console.warn(`[tenant ${this.tenant.id}] resolveSpace failed:`, err);
+      return undefined;
     }
-    return { text: bodyText, images, unsupportedAttachments };
+  }
+
+  // Recover queue rows orphaned by a crash. Called once after the app
+  // subscribes successfully so any messages dropped on the floor during a
+  // deploy get a graceful "I missed some — please resend" notice instead of
+  // silent loss.
+  private async recoverOrphanedBatches() {
+    const db = getDb();
+    // Any rows we claimed but never deleted (the dispatch died mid-flight
+    // before the reply was sent) become eligible for retry once they age out.
+    await db
+      .update(batchQueue)
+      .set({ dispatchedAt: null })
+      .where(
+        and(
+          eq(batchQueue.tenantId, this.tenant.id),
+          sql`${batchQueue.dispatchedAt} IS NOT NULL`,
+          lt(batchQueue.dispatchedAt, new Date(Date.now() - STALE_DISPATCH_MS)),
+        ),
+      );
+
+    // Any spaces that still have unclaimed rows get replayed via flushBatch,
+    // which reconstructs the live Space from the stored sender_id.
+    const pendingRows = await db
+      .select({ spaceId: batchQueue.spaceId })
+      .from(batchQueue)
+      .where(and(eq(batchQueue.tenantId, this.tenant.id), isNull(batchQueue.dispatchedAt)));
+    const spaceIds = Array.from(new Set(pendingRows.map((r) => r.spaceId)));
+    if (spaceIds.length === 0) return;
+    console.warn(
+      `[tenant ${this.tenant.id}] recovering ${spaceIds.length} orphaned space(s) from queue`,
+    );
+    await this.logEvent("status", "queue_recover", { spaces: spaceIds.length });
+    for (const spaceId of spaceIds) {
+      await this.flushBatch(spaceId);
+    }
   }
 
   private async tryUploadAttachment(content: MessageContent): Promise<ImageInput | null> {
@@ -702,7 +852,6 @@ export class TenantWorker {
         "• /new — start a fresh thread",
         "• /branch <name> — switch the branch I run against",
         "• /switch — pick a different environment / repo",
-        "• /model — see the active model",
         "• /help — list everything",
       ].join("\n"),
     );
@@ -715,7 +864,6 @@ export class TenantWorker {
     await this.logEvent("out", "intro", { spaceId: space.id });
   }
 
-  // Returns true if the message was a recognized command (handled, or unknown).
   private async handleCommand(
     space: Space<unknown>,
     m: Message & {
@@ -738,44 +886,10 @@ export class TenantWorker {
             "/branch — show current branch",
             "/branch <name> — switch branch (resets thread)",
             "/switch — list connected environments",
-            "/switch <label-or-id> — pick environment (resets thread)",
-            "/model — show model picker",
+            "/switch <number> — pick environment (resets thread)",
             "/help — this message",
           ].join("\n"),
         );
-        return true;
-      }
-      case "/model": {
-        const current = this.tenant.codexModel;
-        if (!arg) {
-          await m.reply(
-            [
-              `Model: ${current}`,
-              "",
-              "Codex picks the model per task on chatgpt.com/codex —",
-              "open the model dropdown on a new task to change it.",
-              "",
-              `Known models: ${AVAILABLE_MODELS.join(", ")}`,
-            ].join("\n"),
-          );
-          await space.send(richlink(CODEX_MODEL_PICKER_URL));
-          return true;
-        }
-        const choice = AVAILABLE_MODELS.find((n) => n.toLowerCase() === arg.toLowerCase());
-        if (!choice) {
-          await m.reply(`Unknown model "${arg}". Known: ${AVAILABLE_MODELS.join(", ")}.`);
-          return true;
-        }
-        await getDb()
-          .update(tenants)
-          .set({ codexModel: choice, updatedAt: new Date() })
-          .where(eq(tenants.id, this.tenant.id));
-        this.tenant = { ...this.tenant, codexModel: choice };
-        await this.logEvent("in", "/model", { model: choice });
-        await m.reply(
-          `Preference saved as ${choice}. Pick it per-task on the web for now — the create-task API doesn't accept a model field yet.`,
-        );
-        await space.send(richlink(CODEX_MODEL_PICKER_URL));
         return true;
       }
       case "/branch": {
@@ -813,31 +927,39 @@ export class TenantWorker {
           }
           throw err;
         }
-        const usable = envs.filter((e) => e.repos.length > 0 && !e.archived);
+        const usable = envs.filter((e) => e.repos.length > 0 && !e.archived).slice(0, 10);
         if (!arg) {
           if (usable.length === 0) {
             await m.reply("No environments with a connected repo yet.");
             return true;
           }
           const current = this.tenant.codexEnvironmentId;
-          const lines = usable.slice(0, 10).map((e) => {
+          const lines = usable.map((e, i) => {
             const repo = e.repos[0] ?? "no repo";
-            const short = e.id.slice(0, 8);
             const mark = e.id === current ? " (current)" : "";
-            return `• ${e.label} — ${repo} [${short}]${mark}`;
+            return `${i + 1}. ${e.label} — ${repo}${mark}`;
           });
           await m.reply(
-            ["Environments:", ...lines, "", "Reply /switch <label or id> to pick."].join("\n"),
+            ["Environments:", ...lines, "", "Reply /switch <number> to pick."].join("\n"),
           );
           return true;
         }
-        const q = arg.toLowerCase();
-        const picked =
-          usable.find((e) => e.id === arg) ??
-          usable.find((e) => e.id.toLowerCase().startsWith(q)) ??
-          usable.find((e) => e.label.toLowerCase() === q) ??
-          usable.find((e) => e.label.toLowerCase().includes(q)) ??
-          usable.find((e) => e.repos.some((r) => r.toLowerCase().includes(q)));
+        // Numeric pick first (1-indexed list above); fall back to label/id
+        // substring match so the existing UX keeps working for power users.
+        let picked: WhamEnvironment | undefined;
+        if (/^\d+$/.test(arg)) {
+          const idx = Number.parseInt(arg, 10) - 1;
+          if (idx >= 0 && idx < usable.length) picked = usable[idx];
+        }
+        if (!picked) {
+          const q = arg.toLowerCase();
+          picked =
+            usable.find((e) => e.id === arg) ??
+            usable.find((e) => e.id.toLowerCase().startsWith(q)) ??
+            usable.find((e) => e.label.toLowerCase() === q) ??
+            usable.find((e) => e.label.toLowerCase().includes(q)) ??
+            usable.find((e) => e.repos.some((r) => r.toLowerCase().includes(q)));
+        }
         if (!picked) {
           await m.reply(`No environment matched "${arg}". Send /switch to see the list.`);
           return true;

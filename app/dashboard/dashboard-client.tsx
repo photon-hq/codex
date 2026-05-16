@@ -16,7 +16,6 @@ interface Me {
     codexUserEmail: string | null;
     codexEnvironmentId: string | null;
     codexEnvironmentBranch: string;
-    codexModel: string;
     status: string;
     createdAt: string;
   };
@@ -172,9 +171,7 @@ export default function DashboardClient() {
                   disabled={disconnecting}
                   className="btn-pill-primary inline-flex items-center justify-center disabled:cursor-progress"
                 >
-                  {disconnecting ? (
-                    <Loader2 size={14} className="mr-1.5 animate-spin" />
-                  ) : null}
+                  {disconnecting ? <Loader2 size={14} className="mr-1.5 animate-spin" /> : null}
                   {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
                   {!disconnecting && <Trash2 size={14} className="ml-1.5" />}
                 </button>

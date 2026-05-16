@@ -25,12 +25,34 @@ export const tenants = pgTable("tenants", {
   codexUserEmail: text("codex_user_email"),
   codexEnvironmentId: text("codex_environment_id"),
   codexEnvironmentBranch: text("codex_environment_branch").notNull().default("main"),
-  codexModel: text("codex_model").notNull().default("gpt-5-codex"),
 
   status: text("status").notNull().default("provisioned"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Durable per-space inbound queue. Each row is one inbound iMessage bubble.
+// Rows are inserted on receipt and deleted once a successful Codex reply has
+// been sent. A worker restart picks up any rows that are still pending or
+// were claimed by a now-dead dispatch.
+export const batchQueue = pgTable("batch_queue", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  tenantId: uuid("tenant_id").notNull(),
+  spaceId: text("space_id").notNull(),
+  // "text" — bodyText is the prompt; "image" — payload carries an already-
+  // uploaded Codex ImageInput; "voice" — placeholder, audio is not forwarded.
+  kind: text("kind").notNull(),
+  bodyText: text("body_text"),
+  imagePayload: jsonb("image_payload"),
+  spectrumMessageId: text("spectrum_message_id"),
+  // sender.id from the inbound Spectrum message — used to reconstruct the
+  // Space via the iMessage provider after a worker restart when we no longer
+  // have a live Message handle.
+  senderId: text("sender_id"),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+  // Set when a dispatch claims this row. NULL while still queued.
+  dispatchedAt: timestamp("dispatched_at", { withTimezone: true }),
 });
 
 export const codexThreads = pgTable("codex_threads", {
@@ -59,3 +81,5 @@ export type NewTenant = typeof tenants.$inferInsert;
 export type CodexThread = typeof codexThreads.$inferSelect;
 export type NewCodexThread = typeof codexThreads.$inferInsert;
 export type EventRow = typeof events.$inferSelect;
+export type BatchQueueRow = typeof batchQueue.$inferSelect;
+export type NewBatchQueueRow = typeof batchQueue.$inferInsert;

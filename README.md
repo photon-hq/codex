@@ -17,9 +17,8 @@ Text Codex on iMessage.
 | `/new`                 | Starts a fresh Codex thread. 👍 tapback to confirm.       |
 | `/branch`              | Shows the branch Codex runs against.                      |
 | `/branch <name>`       | Switches branch and starts a fresh thread.                |
-| `/switch`              | Lists your environments (repo + label).                   |
-| `/switch <label-or-id>`| Picks an environment and starts a fresh thread.           |
-| `/model`               | Shows the active model and a link to the chatgpt.com picker. |
+| `/switch`              | Lists your environments (numbered).                       |
+| `/switch <number>`     | Picks an environment and starts a fresh thread.           |
 
 Every message you send gets a 👍 tapback when Codex picks it up, and the
 tapback flips to ❤️ when the task is finished.
