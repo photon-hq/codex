@@ -1,7 +1,7 @@
 "use client";
 
 import { BackHomePill, CodexIcon, TopNav } from "@/components/chrome";
-import { Check, Copy, Loader2, MessageSquare, Trash2 } from "lucide-react";
+import { Check, Copy, Loader2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -57,11 +57,6 @@ export default function DashboardClient() {
   }, [refresh]);
 
   const tenantHref = me?.tenant ? (me.tenant.redirectUri ?? `sms:${me.tenant.phoneNumber}`) : null;
-
-  const openImessage = useCallback(() => {
-    if (!tenantHref) return;
-    window.location.href = tenantHref;
-  }, [tenantHref]);
 
   useEffect(() => {
     if (!tenantHref) return;
@@ -120,7 +115,6 @@ export default function DashboardClient() {
   if (!me?.tenant) return null;
 
   const t = me.tenant;
-  const codexUrl = "https://chatgpt.com/codex";
 
   return (
     <>
@@ -141,24 +135,6 @@ export default function DashboardClient() {
               the Messages app — Codex replies in the same thread.
             </p>
 
-            <div className="fade-up fade-up-6 mt-7 flex w-full flex-col items-center gap-2.5">
-              <button
-                type="button"
-                onClick={openImessage}
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-              >
-                <MessageSquare size={12} /> Try opening iMessage again
-              </button>
-              <a
-                href={codexUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-              >
-                Continue at chatgpt.com/codex ↗
-              </a>
-            </div>
-
             {!t.codexEnvironmentId && (
               <div className="fade-up fade-up-7 mt-10 w-full rounded-[12px] border border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_8%,white)] px-4 py-3 text-left">
                 <p className="text-[13px] leading-snug text-[var(--color-text-muted)]">
@@ -177,39 +153,39 @@ export default function DashboardClient() {
               </div>
             )}
 
-            <div className="fade-up fade-up-7 mt-12 flex w-full items-center justify-center text-[12.5px] font-medium tracking-[-0.005em]">
+            <div className="fade-up fade-up-7 mt-10 flex w-full items-center justify-center">
               {!confirmDisconnect ? (
                 <button
                   type="button"
                   onClick={() => setConfirmDisconnect(true)}
-                  className="inline-flex items-center gap-1.5 text-[var(--color-danger)] hover:opacity-80"
+                  className="btn-pill-primary inline-flex items-center justify-center"
                 >
-                  <Trash2 size={12} /> Disconnect
+                  Disconnect
+                  <Trash2 size={14} className="ml-1.5" />
                 </button>
               ) : (
-                <span className="inline-flex items-center gap-3">
+                <div className="inline-flex items-center gap-3">
                   <button
                     type="button"
                     onClick={disconnect}
                     disabled={disconnecting}
-                    className="inline-flex items-center gap-1.5 font-semibold text-[var(--color-danger)] hover:opacity-80 disabled:opacity-60"
+                    className="btn-pill-primary inline-flex items-center justify-center disabled:cursor-progress"
                   >
                     {disconnecting ? (
-                      <Loader2 size={12} className="animate-spin" />
-                    ) : (
-                      <Trash2 size={12} />
-                    )}
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                    ) : null}
                     {disconnecting ? "Disconnecting…" : "Confirm disconnect"}
+                    {!disconnecting && <Trash2 size={14} className="ml-1.5" />}
                   </button>
                   <button
                     type="button"
                     onClick={() => setConfirmDisconnect(false)}
                     disabled={disconnecting}
-                    className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                    className="text-[12.5px] font-medium tracking-[-0.005em] text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-60"
                   >
                     Cancel
                   </button>
-                </span>
+                </div>
               )}
             </div>
           </div>
