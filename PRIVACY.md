@@ -62,7 +62,7 @@ Click **Disconnect** on the dashboard at any time. We will:
 2. Wipe your ChatGPT OAuth tokens (encrypted blob + IV + tag).
 3. Drop the tenant row and associated event log within 24 hours.
 
-If you can't access the dashboard, email **hello@photon.codes** with
+If you can't access the dashboard, email **daniel@photon.codes** with
 the phone number on file and we will remove the record manually.
 
 ## 6. Security
@@ -73,7 +73,7 @@ the phone number on file and we will remove the record manually.
 - Transport between you and our endpoints is TLS 1.2+.
 
 We are a small team; if you find a vulnerability, please email
-**security@photon.codes** rather than filing a public issue.
+**daniel@photon.codes** rather than filing a public issue.
 
 ## 7. Children
 
@@ -87,5 +87,5 @@ We will post material changes to this document at
 
 ## 9. Contact
 
-Privacy questions: **hello@photon.codes**
-Security disclosures: **security@photon.codes**
+Privacy questions: **daniel@photon.codes**
+Security disclosures: **daniel@photon.codes**

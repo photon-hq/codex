@@ -47,7 +47,7 @@ or Apple artwork. See [NOTICE.md](./NOTICE.md) for the full statement.
 
 Terms of use: [TERMS.md](./TERMS.md).
 
-Rights holders: open an issue or email **hello@photon.codes** and we will
+Rights holders: open an issue or email **daniel@photon.codes** and we will
 respond promptly.
 
 ## License

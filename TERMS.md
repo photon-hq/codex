@@ -76,4 +76,4 @@ Continued use after a change constitutes acceptance.
 
 ## 9. Contact
 
-Questions: **hello@photon.codes**
+Questions: **daniel@photon.codes**

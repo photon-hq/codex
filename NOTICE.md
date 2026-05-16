@@ -40,4 +40,4 @@ All API traffic uses official, user-authenticated endpoints.
 
 If you are a rights holder and believe something in this repository
 infringes on your rights, please open an issue or email
-**hello@photon.codes** and we will address it promptly.
+**daniel@photon.codes** and we will address it promptly.
