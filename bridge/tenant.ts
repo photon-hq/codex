@@ -735,8 +735,9 @@ function composeReply(
 }
 
 // Split a model reply into iMessage-sized bubbles on blank-line paragraph breaks,
-// but keep fenced ```code``` blocks intact so we don't shatter a snippet across
-// multiple bubbles.
+// stripping markdown syntax so iMessage doesn't render raw `**`, `__`, headings,
+// links, etc. Fenced ```code``` blocks stay as a single bubble (just minus the
+// fence markers) so snippets don't get shattered.
 function splitIntoBubbles(raw: string): string[] {
   const text = raw.trim();
   if (!text) return [];
@@ -754,16 +755,77 @@ function splitIntoBubbles(raw: string): string[] {
   const bubbles: string[] = [];
   for (const tok of tokens) {
     if (tok.kind === "fence") {
-      const trimmed = tok.text.trim();
-      if (trimmed) bubbles.push(trimmed);
+      const stripped = stripFence(tok.text);
+      if (stripped) bubbles.push(stripped);
       continue;
     }
     for (const piece of tok.text.split(/\n{2,}/)) {
-      const trimmed = piece.trim();
-      if (trimmed) bubbles.push(trimmed);
+      const cleaned = stripProseMarkdown(piece).trim();
+      if (cleaned) bubbles.push(cleaned);
     }
   }
   return bubbles;
+}
+
+// Strip the surrounding ```lang ... ``` fence, keeping inner lines verbatim
+// (code may contain markdown-looking characters that we must not touch).
+function stripFence(block: string): string {
+  let inner = block.replace(/^```[^\n]*\n?/, "").replace(/\n?```\s*$/, "");
+  inner = inner.replace(/^\n+/, "").replace(/\n+$/, "");
+  return inner;
+}
+
+// Convert prose markdown into plain text suitable for iMessage bubbles.
+function stripProseMarkdown(input: string): string {
+  let out = input;
+
+  // Inline code: `foo` -> foo
+  out = out.replace(/`+([^`\n]+?)`+/g, "$1");
+
+  // Images: ![alt](url) -> alt (url) or just url
+  out = out.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, alt, url) =>
+    alt ? `${alt} (${url})` : url,
+  );
+
+  // Links: [text](url) -> text (url), or just url when text === url
+  out = out.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, (_, label, url) =>
+    label.trim() === url.trim() ? url : `${label} (${url})`,
+  );
+
+  // Bold + italic markers: ***text***, **text**, __text__, _text_, *text*
+  out = out.replace(/\*\*\*([^*\n]+?)\*\*\*/g, "$1");
+  out = out.replace(/\*\*([^*\n]+?)\*\*/g, "$1");
+  out = out.replace(/__([^_\n]+?)__/g, "$1");
+  // Single * italics — avoid eating bullet stars or "*" floating in code-ish text.
+  out = out.replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?:;]|$)/g, "$1$2");
+  // Single _ italics — keep underscores inside identifiers (e.g. foo_bar).
+  out = out.replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,!?:;]|$)/g, "$1$2");
+
+  // Strikethrough: ~~text~~ -> text
+  out = out.replace(/~~([^~\n]+?)~~/g, "$1");
+
+  // Headings: leading "# ", "## ", ... -> strip markers only
+  out = out.replace(/^\s{0,3}#{1,6}\s+/gm, "");
+
+  // Blockquotes: leading "> " -> drop the marker
+  out = out.replace(/^\s{0,3}>\s?/gm, "");
+
+  // Bulleted lists: leading "-", "*", "+" -> "• "
+  out = out.replace(/^(\s*)[-*+]\s+/gm, "$1• ");
+
+  // Horizontal rules on their own line
+  out = out.replace(/^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/gm, "");
+
+  // Common HTML entities (Codex rarely emits these, but cheap to handle).
+  out = out
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ");
+
+  return out;
 }
 
 function friendlyError(err: unknown): string {
