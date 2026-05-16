@@ -896,19 +896,10 @@ export class TenantWorker {
       m.react(ACK_REACTION).catch(() => {});
     }
     await m.reply(
-      "Welcome to Codex on iMessage. Text me like you'd text a teammate — I'll spin up tasks against your connected GitHub repo and reply here when they're done."
+      "Welcome to Codex on iMessage. Send me tasks and I'll run them against your connected repo."
     );
     await space.send(
-      [
-        "A few commands you can use anytime:",
-        "• /new — start a fresh thread",
-        "• /branch <name> — switch the branch I run against",
-        "• /switch — pick a different environment / repo",
-        "• /help — list everything",
-      ].join("\n")
-    );
-    await space.send(
-      "Try it: send a one-liner like “add a /version endpoint and open a PR.” I'll thumbs-up when I'm on it and heart it when the task is finished."
+      "Type /new to start a new thread, /switch to change repo or environment, or /help for everything else."
     );
     if (m.react) {
       m.react(DONE_REACTION).catch(() => {});
