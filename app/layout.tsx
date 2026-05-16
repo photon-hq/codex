@@ -85,9 +85,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           type="video/mp4"
         />
       </head>
-      <body className="hero-bg relative min-h-screen overflow-x-hidden">
+      <body className="hero-bg relative min-h-[100dvh] overflow-x-hidden">
         <BackdropVideo />
-        <div className="relative z-10 flex min-h-screen flex-col">
+        <div className="relative z-10 flex min-h-[100dvh] flex-col">
           {children}
           <Footer />
         </div>
