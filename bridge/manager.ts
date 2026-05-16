@@ -89,16 +89,6 @@ export class BridgeManager {
         existing.refresh(row);
         continue;
       }
-      const dupes = Array.from(this.workers.values()).filter(
-        (w) => w.health().phoneNumber === row.phoneNumber
-      );
-      if (dupes.length > 0) {
-        console.warn(
-          `[bridge sync] new tenant ${row.id} shares phone ${row.phoneNumber} with existing tenant(s): ` +
-            dupes.map((d) => d.id).join(",") +
-            " — both will be subscribed until the stale row is deleted"
-        );
-      }
       const worker = new TenantWorker(row);
       this.workers.set(row.id, worker);
       await worker.start();
