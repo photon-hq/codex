@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 const PHOTON_URL = "https://photon.codes";
-const DISCORD_URL = "https://discord.gg/zX3NGecs";
+const DISCORD_URL = "https://discord.gg/Y6ymaZYpsz";
 const GITHUB_URL = "https://github.com/photon-hq/codex";
 const TERMS_URL = "https://github.com/photon-hq/codex/blob/main/TERMS.md";
 const PRIVACY_URL = "https://github.com/photon-hq/codex/blob/main/PRIVACY.md";
