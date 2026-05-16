@@ -2,16 +2,16 @@
 
 Text Codex on iMessage.
 
-```mermaid
-flowchart LR
-    A["iMessage<br/><sub>Your thread</sub>"] <--> B["Spectrum<br/><sub>Hosted line + bridge</sub>"] <--> C["Codex<br/><sub>Cloud agent</sub>"]
-```
-
 ## How it works
 
 1. Sign in to ChatGPT (the same account that has Codex)
 2. Connect Spectrum and claim a phone number
 3. Open iMessage with that number — Codex replies inline
+
+```mermaid
+flowchart LR
+    A["iMessage"] <--> B["Spectrum"] <--> C["Codex"]
+```
 
 ## Commands
 
