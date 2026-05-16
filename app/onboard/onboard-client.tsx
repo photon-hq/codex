@@ -663,25 +663,21 @@ function CodexLandingStage({
   onRetry: () => void;
   showDeviceAuthHint: boolean;
 }) {
+  if (busy) {
+    return null;
+  }
   return (
     <>
       <h1 className="section-title fade-up fade-up-4 mt-4">Sign in with ChatGPT</h1>
       <div className="fade-up fade-up-6 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-3">
-        {busy ? (
-          <span className="inline-flex items-center gap-2 text-[12.5px] text-[var(--color-text-muted)]">
-            <Loader2 className="animate-spin" size={12} /> Reaching OpenAI&hellip;
-          </span>
-        ) : (
-          <button
-            className="btn-pill-primary inline-flex items-center justify-center"
-            disabled={busy}
-            onClick={onRetry}
-            type="button"
-          >
-            Try again
-            <ArrowRight className="ml-1.5" size={14} />
-          </button>
-        )}
+        <button
+          className="btn-pill-primary inline-flex items-center justify-center"
+          onClick={onRetry}
+          type="button"
+        >
+          Try again
+          <ArrowRight className="ml-1.5" size={14} />
+        </button>
         {showDeviceAuthHint && (
           <div className="fade-up mt-1 w-full rounded-[10px] border border-[color-mix(in_srgb,var(--color-warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] px-3 py-2.5 text-left">
             <p className="text-[12px] text-[var(--color-text-muted)] leading-snug">
