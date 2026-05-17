@@ -380,14 +380,32 @@ export class TenantWorker {
     }
 
     // Commands & intro triggers bypass the batcher so they stay snappy.
-    if (bodyText === "/new") {
+    // `/new` alone resets the thread; `/new <text>` resets it and uses the
+    // trailing text as the first prompt of the fresh thread.
+    const newMatch = /^\/new(?:\s+([\s\S]+))?$/.exec(bodyText);
+    if (newMatch) {
       this.flushBatchNow(space.id);
       await this.resetThread(space.id);
-      if (m.react) {
-        await m.react(RESET_REACTION).catch(() => {});
-      } else {
-        await m.reply("New Codex thread started. Send your first message.");
+      const followup = newMatch[1]?.trim() ?? "";
+      if (!followup) {
+        if (m.react) {
+          await m.react(RESET_REACTION).catch(() => {});
+        } else {
+          await m.reply("New Codex thread started. Send your first message.");
+        }
+        return;
       }
+      // `/new <text>`: tapback to acknowledge the reset, then enqueue the
+      // trailing text as the first prompt of the fresh thread. Fire the
+      // tapback in parallel so the enqueue doesn't wait on Spectrum.
+      if (m.react) {
+        m.react(RESET_REACTION).catch(() => {});
+      }
+      if (!this.tenant.codexRefreshCiphertext) {
+        await m.reply("Codex isn't linked for this number yet. Open the dashboard to sign in.");
+        return;
+      }
+      await this.enqueueForBatch(space, m, content, followup);
       return;
     }
     if (INTRO_TRIGGERS.has(bodyText.toLowerCase())) {
@@ -988,6 +1006,7 @@ export class TenantWorker {
           [
             "Commands:",
             "/new — start a fresh Codex thread",
+            "/new <message> — start a fresh thread and send <message> as the first prompt",
             "/branch — show current branch",
             "/branch <name> — switch branch (resets thread)",
             "/switch — list connected environments",
