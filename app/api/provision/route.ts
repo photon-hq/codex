@@ -7,7 +7,8 @@ import {
   ensureFreshAccessToken,
   isGithubLinkMissingError,
   isMfaRequiredError,
-  pickDefaultEnvironment,
+  listEnvironments,
+  type WhamEnvironment,
 } from "@/lib/codex-cloud";
 import { encrypt } from "@/lib/crypto";
 import {
@@ -101,14 +102,28 @@ export async function POST(req: Request) {
     );
   }
 
+  // Strict pre-flight: Codex must be fully usable BEFORE we touch Spectrum.
+  // A half-onboarded tenant (Spectrum provisioned, Codex broken) leaves the
+  // user with an iMessage number that can only reply with error messages —
+  // a worse UX than failing fast here.
+  //
+  // Gates, in order:
+  //   1. MFA satisfied on the ChatGPT account.
+  //   2. GitHub connected to Codex on chatgpt.com.
+  //   3. At least one Codex environment has a repo attached.
+  //
+  // Any other error (network/5xx/workspace-blocked/usage-limit) is logged
+  // and treated as transient — we let provisioning continue, because we
+  // don't want a flaky upstream to permanently block onboarding when MFA
+  // and GitHub are obviously fine.
   let codexEnvironmentId: string | null = null;
+  let envs: WhamEnvironment[] | null = null;
   try {
-    const env = await pickDefaultEnvironment(freshTokens.access_token);
-    codexEnvironmentId = env?.id ?? null;
+    envs = await listEnvironments(freshTokens.access_token);
   } catch (err) {
     if (isMfaRequiredError(err)) {
       console.warn(
-        "[provision] codex MFA-required during pre-flight env probe — blocking onboarding"
+        "[provision] codex MFA-required during pre-flight — blocking before Spectrum"
       );
       // Keep `codex_pending_tokens` so the user can retry after fixing settings.
       return NextResponse.json(
@@ -127,7 +142,7 @@ export async function POST(req: Request) {
     }
     if (isGithubLinkMissingError(err)) {
       console.warn(
-        "[provision] codex GitHub-not-linked during pre-flight env probe — blocking onboarding"
+        "[provision] codex GitHub-not-linked during pre-flight — blocking before Spectrum"
       );
       return NextResponse.json(
         {
@@ -141,7 +156,39 @@ export async function POST(req: Request) {
         { status: 412 }
       );
     }
-    console.warn("[provision] could not list codex envs (continuing):", err);
+    // Network / 5xx / workspace-blocked / usage-limit / etc. — log and
+    // continue. We can't gate on these because Codex Cloud is flaky and
+    // users would be unable to onboard during transient outages.
+    console.warn(
+      "[provision] codex env probe failed (continuing — MFA + GitHub gates skipped):",
+      err
+    );
+  }
+
+  if (envs) {
+    // Gate 3: GitHub is linked (listEnvironments succeeded) but the user
+    // hasn't attached a repo to any environment. Codex would 412 on every
+    // iMessage. Block here so the user fixes it before they have a phone
+    // number sitting on a broken bot.
+    const envWithRepo = envs.find((e) => e.isPinned && e.repos.length > 0)
+      ?? envs.find((e) => e.repos.length > 0);
+    if (!envWithRepo) {
+      console.warn(
+        `[provision] codex has ${envs.length} env(s) but none have repos — blocking before Spectrum`
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Codex is connected to GitHub but no repository is attached to a " +
+            "Codex environment yet. Open chatgpt.com → Codex → Environments " +
+            "and add a repo to your default environment, then continue.",
+          reason: "github_repo_required",
+          codexEnvironmentsUrl: "https://chatgpt.com/codex/settings/environments",
+        },
+        { status: 412 }
+      );
+    }
+    codexEnvironmentId = envWithRepo.id;
   }
 
   try {

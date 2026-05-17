@@ -20,6 +20,7 @@ type Stage =
   | "codex-success"
   | "mfa"
   | "github"
+  | "github-repo"
   | "spectrum-device"
   | "phone"
   | "done";
@@ -44,10 +45,12 @@ const STEP_INDEX: Record<Stage, number> = {
   codex: 0,
   "codex-device": 0,
   "codex-success": 0,
-  // MFA / GitHub-link-missing happen during/after Codex sign-in, so keep the
-  // user visually on step 0 while we ask them to fix their account settings.
+  // MFA / GitHub-link-missing / GitHub-repo-missing all happen during/after
+  // Codex sign-in, so keep the user visually on step 0 while we ask them to
+  // fix their account settings.
   mfa: 0,
   github: 0,
+  "github-repo": 0,
   "spectrum-device": 1,
   phone: 2,
   done: 3,
@@ -336,6 +339,10 @@ export default function OnboardClient() {
           setStage("github");
           // Dedicated GitHub-required panel; suppress the generic toast.
           return;
+        } else if (body.reason === "github_repo_required") {
+          setStage("github-repo");
+          // Dedicated GitHub-repo panel; suppress the generic toast.
+          return;
         } else {
           setStage("codex");
         }
@@ -402,6 +409,7 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "codex-device":
     case "mfa":
     case "github":
+    case "github-repo":
       return <ChatGPTChip />;
     case "codex-success":
       return (
@@ -489,6 +497,9 @@ function StageContent({
 
     case "github":
       return <GithubRequiredStage busy={busy} onRelinkCodex={beginCodex} />;
+
+    case "github-repo":
+      return <GithubRepoRequiredStage busy={busy} onRecheck={onPhoneSubmit} />;
 
     case "codex-device":
       return (
@@ -871,6 +882,89 @@ function GithubRequiredStage({
             </>
           )}
         </button>
+      </div>
+    </>
+  );
+}
+
+function GithubRepoRequiredStage({
+  busy,
+  onRecheck,
+}: {
+  busy: boolean;
+  onRecheck: () => void;
+}) {
+  return (
+    <>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Add a repo to Codex</h1>
+      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
+        Codex is connected to GitHub but no repository is attached to a Codex
+        environment yet — without a repo, Codex has nothing to run tasks
+        against. Pick a repo on chatgpt.com, then come back here.
+      </p>
+
+      <ol className="fade-up fade-up-6 mt-6 flex w-full max-w-[28rem] flex-col gap-3 text-left">
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            1
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Open{" "}
+            <a
+              className="underline underline-offset-2 hover:text-[var(--color-text)]"
+              href="https://chatgpt.com/codex/settings/environments"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              chatgpt.com → Codex → Environments
+              <ExternalLink className="ml-0.5 inline" size={11} />
+            </a>
+            .
+          </span>
+        </li>
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            2
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Open your default environment and add at least one GitHub repository
+            to it. This is the repo Codex will work in.
+          </span>
+        </li>
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            3
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Come back here and click <strong className="font-semibold">Re-check</strong>.
+            We'll verify Codex can see the repo, then continue to iMessage setup.
+          </span>
+        </li>
+      </ol>
+
+      <div className="fade-up fade-up-7 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-2">
+        <button
+          className="btn-pill-primary inline-flex items-center justify-center"
+          disabled={busy}
+          onClick={onRecheck}
+          type="button"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="mr-1.5 animate-spin" size={14} />
+              Checking…
+            </>
+          ) : (
+            <>
+              Re-check
+              <ArrowRight className="ml-1.5" size={14} />
+            </>
+          )}
+        </button>
+        <p className="body-small mt-1 max-w-[24rem] text-balance text-center">
+          Once you've added a repo at chatgpt.com, hit Re-check to confirm
+          and continue.
+        </p>
       </div>
     </>
   );
