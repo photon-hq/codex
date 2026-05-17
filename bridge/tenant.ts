@@ -16,6 +16,7 @@ import {
   ensureFreshAccessToken,
   followUp,
   type ImageInput,
+  isGithubLinkMissingError,
   isMfaRequiredError,
   listEnvironments,
   pickDefaultEnvironment,
@@ -740,9 +741,18 @@ export class TenantWorker {
             `Tenant must enable MFA AND "device code login" in chatgpt.com Settings → Security, ` +
             `then re-link Codex. (Workspace accounts may also need admin to allow device-code.)`
         );
+      } else if (isGithubLinkMissingError(err)) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex GitHub-not-linked — Wham rejected with ` +
+            `missing_github_connector_link. Tenant must connect GitHub at ` +
+            `chatgpt.com → Codex → Environments and re-link Codex.`
+        );
       } else {
         console.error(`[tenant ${this.tenant.id}] codex error:`, err);
       }
+      const needsEnvLink =
+        (err instanceof CodexCloudError && err.status === 412) ||
+        isGithubLinkMissingError(err);
       const errorText =
         err instanceof CodexCloudError && err.status === 412
           ? "Connect a GitHub repo to Codex before texting — I need an environment to run in."
@@ -753,7 +763,7 @@ export class TenantWorker {
         } else {
           await liveSpace.send(errorText);
         }
-        if (err instanceof CodexCloudError && err.status === 412) {
+        if (needsEnvLink) {
           await liveSpace.send(richlink(CONNECT_ENVIRONMENTS_URL));
         }
       } catch (replyErr) {
@@ -1294,6 +1304,13 @@ function friendlyError(err: unknown): string {
       "go to chatgpt.com → Settings → Security and (1) enable MFA, and (2) enable " +
       "“device code login”. Then re-link Codex from the dashboard. If the account is " +
       "part of a ChatGPT workspace, an admin may also need to allow device-code login."
+    );
+  }
+  if (isGithubLinkMissingError(err)) {
+    return (
+      "Codex isn't linked to GitHub on this ChatGPT account yet, so it can't run " +
+      "tasks. Open chatgpt.com → Codex → Environments and connect GitHub, then " +
+      "re-link Codex from the dashboard."
     );
   }
   if (err instanceof CodexCloudError) {

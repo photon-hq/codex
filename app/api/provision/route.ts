@@ -5,6 +5,7 @@ import { getDb } from "@/db/client";
 import { tenants } from "@/db/schema";
 import {
   ensureFreshAccessToken,
+  isGithubLinkMissingError,
   isMfaRequiredError,
   pickDefaultEnvironment,
 } from "@/lib/codex-cloud";
@@ -122,6 +123,22 @@ export async function POST(req: Request) {
           chatgptSecurityUrl: "https://chatgpt.com/#settings/Security",
         },
         { status: 403 }
+      );
+    }
+    if (isGithubLinkMissingError(err)) {
+      console.warn(
+        "[provision] codex GitHub-not-linked during pre-flight env probe — blocking onboarding"
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Codex needs GitHub connected before it can run tasks. Open " +
+            "chatgpt.com → Codex and connect your GitHub account, then come " +
+            "back and re-link Codex below.",
+          reason: "github_required",
+          codexEnvironmentsUrl: "https://chatgpt.com/codex/settings/environments",
+        },
+        { status: 412 }
       );
     }
     console.warn("[provision] could not list codex envs (continuing):", err);

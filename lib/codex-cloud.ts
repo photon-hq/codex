@@ -44,6 +44,40 @@ export function isMfaRequiredError(err: unknown): err is CodexCloudError {
   return false;
 }
 
+/**
+ * True when `err` is a Codex Cloud error indicating the linked ChatGPT account
+ * hasn't connected GitHub. Returned by the Wham API as
+ * `400 { detail: { type: "missing_github_connector_link", message: ... } }`.
+ * The fix is for the user to open chatgpt.com → Codex → Environments and link
+ * their GitHub account, then re-link Codex in our dashboard so we get a fresh
+ * access token whose Wham calls succeed.
+ *
+ * Distinct from the `412` "no environments" case (`listEnvironments` returns
+ * an empty array): there GitHub *is* linked, the user just hasn't connected
+ * a repo to a Codex environment yet.
+ */
+export function isGithubLinkMissingError(err: unknown): err is CodexCloudError {
+  if (!(err instanceof CodexCloudError)) {
+    return false;
+  }
+  if (err.status !== 400) {
+    return false;
+  }
+  if (err.body && typeof err.body === "object") {
+    const detail = (err.body as { detail?: unknown }).detail;
+    if (detail && typeof detail === "object") {
+      const t = (detail as { type?: unknown }).type;
+      if (t === "missing_github_connector_link") {
+        return true;
+      }
+    }
+  }
+  if (/missing_github_connector_link|github connection not found/i.test(err.message)) {
+    return true;
+  }
+  return false;
+}
+
 async function readJson(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) {

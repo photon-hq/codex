@@ -19,6 +19,7 @@ type Stage =
   | "codex-device"
   | "codex-success"
   | "mfa"
+  | "github"
   | "spectrum-device"
   | "phone"
   | "done";
@@ -43,9 +44,10 @@ const STEP_INDEX: Record<Stage, number> = {
   codex: 0,
   "codex-device": 0,
   "codex-success": 0,
-  // MFA failure happens during/after Codex sign-in, so keep the user
-  // visually on step 0 while we ask them to fix their account settings.
+  // MFA / GitHub-link-missing happen during/after Codex sign-in, so keep the
+  // user visually on step 0 while we ask them to fix their account settings.
   mfa: 0,
+  github: 0,
   "spectrum-device": 1,
   phone: 2,
   done: 3,
@@ -330,6 +332,10 @@ export default function OnboardClient() {
           // Don't show a generic error toast; the dedicated MFA panel
           // explains exactly what to do.
           return;
+        } else if (body.reason === "github_required") {
+          setStage("github");
+          // Dedicated GitHub-required panel; suppress the generic toast.
+          return;
         } else {
           setStage("codex");
         }
@@ -395,6 +401,7 @@ function StageIcon({ stage }: { stage: Stage }) {
     case "codex":
     case "codex-device":
     case "mfa":
+    case "github":
       return <ChatGPTChip />;
     case "codex-success":
       return (
@@ -479,6 +486,9 @@ function StageContent({
 
     case "mfa":
       return <MfaRequiredStage busy={busy} onRelinkCodex={beginCodex} />;
+
+    case "github":
+      return <GithubRequiredStage busy={busy} onRelinkCodex={beginCodex} />;
 
     case "codex-device":
       return (
@@ -783,6 +793,84 @@ function MfaRequiredStage({
           If your ChatGPT account is part of a workspace, your workspace admin may also need to
           allow device-code login.
         </p>
+      </div>
+    </>
+  );
+}
+
+function GithubRequiredStage({
+  busy,
+  onRelinkCodex,
+}: {
+  busy: boolean;
+  onRelinkCodex: () => void;
+}) {
+  return (
+    <>
+      <h1 className="section-title fade-up fade-up-4 mt-4">Connect GitHub to Codex</h1>
+      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
+        Codex hasn't been linked to GitHub on this ChatGPT account yet — without it, Codex can't
+        access a repo to work in. Connect GitHub first, then come back and re-link Codex.
+      </p>
+
+      <ol className="fade-up fade-up-6 mt-6 flex w-full max-w-[28rem] flex-col gap-3 text-left">
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            1
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Open{" "}
+            <a
+              className="underline underline-offset-2 hover:text-[var(--color-text)]"
+              href="https://chatgpt.com/codex/settings/environments"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              chatgpt.com → Codex → Environments
+              <ExternalLink className="ml-0.5 inline" size={11} />
+            </a>{" "}
+            and click <strong className="font-semibold">Connect GitHub</strong> to authorize Codex.
+          </span>
+        </li>
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            2
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Pick at least one repository to link to a Codex environment. Codex will run tasks
+            against that repo.
+          </span>
+        </li>
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            3
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Come back here and click <strong className="font-semibold">Re-link Codex</strong>.
+            We'll start a fresh sign-in that picks up the GitHub connection.
+          </span>
+        </li>
+      </ol>
+
+      <div className="fade-up fade-up-7 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-2">
+        <button
+          className="btn-pill-primary inline-flex items-center justify-center"
+          disabled={busy}
+          onClick={onRelinkCodex}
+          type="button"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="mr-1.5 animate-spin" size={14} />
+              Starting…
+            </>
+          ) : (
+            <>
+              Re-link Codex
+              <ArrowRight className="ml-1.5" size={14} />
+            </>
+          )}
+        </button>
       </div>
     </>
   );
