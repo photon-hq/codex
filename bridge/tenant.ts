@@ -8,6 +8,7 @@ import {
   codexThreads,
   events,
   type Tenant,
+  TENANT_STATUS,
   tenants,
 } from "@/db/schema";
 import {
@@ -19,6 +20,7 @@ import {
   isCodexNetworkError,
   isContextLengthExceededError,
   isGithubLinkMissingError,
+  isInvalidGrantError,
   isMfaRequiredError,
   isUsageLimitError,
   isWorkspaceBlockedError,
@@ -431,7 +433,20 @@ export class TenantWorker {
       return;
     }
 
+    if (this.tenant.status === TENANT_STATUS.NEEDS_RELINK) {
+      // ChatGPT rejected our refresh token earlier (revoked / password
+      // changed / workspace removed). Don't bother enqueuing — just send
+      // the short re-link notice. Costs nothing, doesn't touch OpenAI.
+      await m.reply(this.relinkMessage());
+      await this.logEvent("in", "needs_relink_blocked", {});
+      return;
+    }
+
     await this.enqueueForBatch(space, m, content, bodyText);
+  }
+
+  private relinkMessage(): string {
+    return buildRelinkMessage();
   }
 
   private async enqueueForBatch(
@@ -627,6 +642,27 @@ export class TenantWorker {
       throw new Error(`could not resolve space ${rows[0].spaceId} for queued replay`);
     }
 
+    // Tenant flipped to needs_relink between enqueue and dispatch (most
+    // commonly because *another* batch's refresh attempt failed first).
+    // Drain the queued rows with a single re-link notice instead of running
+    // them through a doomed Codex call.
+    if (this.tenant.status === TENANT_STATUS.NEEDS_RELINK) {
+      try {
+        if (headM) {
+          await headM.reply(this.relinkMessage());
+        } else {
+          await liveSpace.send(this.relinkMessage());
+        }
+      } catch (replyErr) {
+        console.warn(`[tenant ${this.tenant.id}] relink notice send failed:`, replyErr);
+      }
+      await this.logEvent("out", "needs_relink_drain", {
+        batchSize: rows.length,
+        replay: !headM,
+      });
+      return;
+    }
+
     const texts: string[] = [];
     const images: ImageInput[] = [];
     let voiceCount = 0;
@@ -739,7 +775,11 @@ export class TenantWorker {
         });
       });
     } catch (err) {
-      if (isMfaRequiredError(err)) {
+      if (isInvalidGrantError(err)) {
+        // Refresh token is dead. Flip the tenant once so subsequent batches
+        // short-circuit before even decrypting tokens — no point retrying.
+        await this.markNeedsRelink(`invalid_grant from /oauth/token (${err.status})`);
+      } else if (isMfaRequiredError(err)) {
         console.warn(
           `[tenant ${this.tenant.id}] codex MFA-blocked — device-code token lacks MFA claim. ` +
             `Tenant must enable MFA AND "device code login" in chatgpt.com Settings → Security, ` +
@@ -938,6 +978,29 @@ export class TenantWorker {
       this.tenant = { ...this.tenant, codexEnvironmentId: environmentId };
     }
     return { accessToken: fresh.access_token, environmentId };
+  }
+
+  // Flip the tenant to needs_relink and update the in-memory snapshot so
+  // subsequent dispatches in this worker also short-circuit. Idempotent.
+  private async markNeedsRelink(reason: string) {
+    if (this.tenant.status === TENANT_STATUS.NEEDS_RELINK) {
+      return;
+    }
+    console.warn(
+      `[tenant ${this.tenant.id}] marking needs_relink (${reason}) — ChatGPT ` +
+        `rejected our refresh token. Worker will short-circuit replies until ` +
+        `the user re-links from the dashboard.`
+    );
+    try {
+      await getDb()
+        .update(tenants)
+        .set({ status: TENANT_STATUS.NEEDS_RELINK, updatedAt: new Date() })
+        .where(eq(tenants.id, this.tenant.id));
+      this.tenant = { ...this.tenant, status: TENANT_STATUS.NEEDS_RELINK };
+    } catch (err) {
+      console.error(`[tenant ${this.tenant.id}] markNeedsRelink update failed:`, err);
+    }
+    await this.logEvent("error", "needs_relink", { reason });
   }
 
   private async persistTokens(access: string, refresh: string, expiresAtMs: number) {
@@ -1324,7 +1387,20 @@ function stripProseMarkdown(input: string): string {
   return out;
 }
 
+function buildRelinkMessage(): string {
+  const url = process.env.PUBLIC_URL?.trim() || "the Codex dashboard";
+  return (
+    `Your ChatGPT sign-in for Codex has expired or was revoked. Open ${url} ` +
+    `and re-link Codex to start sending messages again. (Your iMessage ` +
+    `number and Spectrum project are intact — only the Codex sign-in needs ` +
+    `refreshing.)`
+  );
+}
+
 function friendlyError(err: unknown): string {
+  if (isInvalidGrantError(err)) {
+    return buildRelinkMessage();
+  }
   if (isMfaRequiredError(err)) {
     return (
       "Codex says this account needs multi-factor authentication enabled before it " +

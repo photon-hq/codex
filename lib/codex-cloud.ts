@@ -176,6 +176,38 @@ export function isContextLengthExceededError(err: unknown): boolean {
   );
 }
 
+/**
+ * True when `err` indicates the user's Codex refresh token has been
+ * permanently revoked or otherwise rejected by ChatGPT's OAuth server.
+ *
+ * Causes we've actually seen:
+ *  - user signed out of all ChatGPT sessions
+ *  - user changed their ChatGPT password (revokes all refresh tokens)
+ *  - workspace admin removed the user from a ChatGPT workspace
+ *  - user manually revoked the device-code grant
+ *  - ChatGPT rotated the refresh token but we missed persisting the rotation
+ *
+ * Wire shape: `POST /oauth/token` returns `400 { error: "invalid_grant",
+ * error_description: "..." }`. Some failures come through as `401` instead.
+ * Either way, retrying will never succeed — the user has to re-do the
+ * device-auth flow from the dashboard.
+ *
+ * Distinct from `isMfaRequiredError`: that's an MFA-policy rejection on a
+ * still-valid token; this is the token itself being dead.
+ */
+export function isInvalidGrantError(err: unknown): err is CodexCloudError {
+  if (!(err instanceof CodexCloudError)) return false;
+  // Auth server returns 400 for invalid_grant, 401 for invalid_client etc.
+  // We only act on the `/oauth/token` family — restrict to the context string
+  // we set in `refreshTokens` to avoid false positives from wham 401s.
+  if (!/token refresh|code exchange/i.test(err.message)) return false;
+  if (err.status !== 400 && err.status !== 401) return false;
+  const haystack = `${err.message} ${JSON.stringify(err.body ?? "")}`.toLowerCase();
+  return /invalid_grant|invalid[_ ]?token|revoked|expired[_ ]token|invalid[_ ]?client/.test(
+    haystack
+  );
+}
+
 export function isGithubLinkMissingError(err: unknown): err is CodexCloudError {
   if (!(err instanceof CodexCloudError)) {
     return false;

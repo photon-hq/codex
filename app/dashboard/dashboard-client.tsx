@@ -55,10 +55,13 @@ export default function DashboardClient() {
     void refresh();
   }, [refresh]);
 
+  const needsRelink = me?.tenant?.status === "needs_relink";
   const tenantHref = me?.tenant ? (me.tenant.redirectUri ?? `sms:${me.tenant.phoneNumber}`) : null;
 
   useEffect(() => {
-    if (!tenantHref) {
+    // Don't auto-launch iMessage if the user can't actually use the bot —
+    // the dashboard banner explains what to do instead.
+    if (!tenantHref || needsRelink) {
       return;
     }
     try {
@@ -134,7 +137,26 @@ export default function DashboardClient() {
               the Messages app — Codex replies in the same thread.
             </p>
 
-            {!t.codexEnvironmentId && (
+            {t.status === "needs_relink" && (
+              <div className="fade-up fade-up-7 mt-8 w-full rounded-[12px] border border-[color-mix(in_srgb,var(--color-warning)_45%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_10%,white)] px-4 py-3 text-left">
+                <p className="text-[13px] text-[var(--color-text-muted)] leading-snug">
+                  <span className="font-medium text-[var(--color-text)]">
+                    Re-link Codex.
+                  </span>{" "}
+                  Your ChatGPT sign-in for Codex expired or was revoked. iMessages to
+                  this number will only get a re-link reminder until you sign in again.
+                </p>
+                <button
+                  className="btn-pill-primary mt-3 inline-flex items-center justify-center"
+                  onClick={() => router.push("/onboard")}
+                  type="button"
+                >
+                  Re-link Codex
+                </button>
+              </div>
+            )}
+
+            {t.status !== "needs_relink" && !t.codexEnvironmentId && (
               <div className="fade-up fade-up-7 mt-8 w-full rounded-[12px] border border-[color-mix(in_srgb,var(--color-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--color-warning)_8%,white)] px-4 py-3 text-left">
                 <p className="text-[13px] text-[var(--color-text-muted)] leading-snug">
                   <span className="font-medium text-[var(--color-text)]">Connect a repo.</span>{" "}

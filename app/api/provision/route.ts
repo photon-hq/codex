@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
-import { tenants } from "@/db/schema";
+import { TENANT_STATUS, tenants } from "@/db/schema";
 import {
   ensureFreshAccessToken,
   isGithubLinkMissingError,
@@ -202,6 +202,11 @@ export async function POST(req: Request) {
       if (stillExists || listProjectsErrored) {
         const refreshBlob = encrypt(freshTokens.refresh_token);
         const accessBlob = encrypt(freshTokens.access_token);
+        if (t.status === TENANT_STATUS.NEEDS_RELINK) {
+          console.log(
+            `[provision] tenant ${t.id} clearing needs_relink — fresh tokens landed via device-auth`
+          );
+        }
         await db
           .update(tenants)
           .set({
@@ -215,6 +220,10 @@ export async function POST(req: Request) {
             codexAccountId: pending.account_id ?? null,
             codexUserEmail: pending.email ?? null,
             codexEnvironmentId: codexEnvironmentId ?? t.codexEnvironmentId,
+            // Re-link path always returns to PROVISIONED. Even if the new
+            // token also turns out to be bad, the worker will re-mark on
+            // its next refresh attempt — but the common case is recovery.
+            status: TENANT_STATUS.PROVISIONED,
             updatedAt: new Date(),
           })
           .where(eq(tenants.id, t.id));

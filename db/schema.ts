@@ -26,11 +26,33 @@ export const tenants = pgTable("tenants", {
   codexEnvironmentId: text("codex_environment_id"),
   codexEnvironmentBranch: text("codex_environment_branch").notNull().default("main"),
 
+  // One of TENANT_STATUS values below. Plain text column (not a Postgres
+  // enum) so we can roll out new states without a migration.
   status: text("status").notNull().default("provisioned"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Lifecycle states for the `tenants.status` column. Kept as string literals
+ * (rather than a Postgres enum) so adding a new state doesn't require a
+ * schema migration — just a new value here and the worker logic to match.
+ */
+export const TENANT_STATUS = {
+  /** Default. Tokens are believed-good; the bridge runs normally. */
+  PROVISIONED: "provisioned",
+  /**
+   * The Codex refresh token has been rejected by ChatGPT's OAuth server
+   * (revoked, password reset, workspace removal, etc.). The worker has
+   * stopped trying to refresh and replies to inbound messages with a
+   * single "re-link from the dashboard" notice. Cleared by /api/provision
+   * when fresh tokens land via the device-auth flow.
+   */
+  NEEDS_RELINK: "needs_relink",
+} as const;
+
+export type TenantStatus = (typeof TENANT_STATUS)[keyof typeof TENANT_STATUS];
 
 // Durable per-space inbound queue. Each row is one inbound iMessage bubble.
 // Rows are inserted on receipt and deleted once a successful Codex reply has
