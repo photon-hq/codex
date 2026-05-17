@@ -3,7 +3,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { tenants } from "@/db/schema";
-import { ensureFreshAccessToken, pickDefaultEnvironment } from "@/lib/codex-cloud";
+import {
+  ensureFreshAccessToken,
+  isMfaRequiredError,
+  pickDefaultEnvironment,
+} from "@/lib/codex-cloud";
 import { encrypt } from "@/lib/crypto";
 import {
   checkPhoneAvailability,
@@ -101,6 +105,25 @@ export async function POST(req: Request) {
     const env = await pickDefaultEnvironment(freshTokens.access_token);
     codexEnvironmentId = env?.id ?? null;
   } catch (err) {
+    if (isMfaRequiredError(err)) {
+      console.warn(
+        "[provision] codex MFA-required during pre-flight env probe — blocking onboarding"
+      );
+      // Keep `codex_pending_tokens` so the user can retry after fixing settings.
+      return NextResponse.json(
+        {
+          error:
+            "Codex requires multi-factor authentication on this ChatGPT account. " +
+            "Open chatgpt.com → Settings → Security and (1) enable multi-factor " +
+            "authentication, then (2) enable “Sign in with device code”. After " +
+            "that, re-link Codex below. If your account belongs to a ChatGPT " +
+            "workspace, an admin may also need to allow device-code login.",
+          reason: "mfa_required",
+          chatgptSecurityUrl: "https://chatgpt.com/#settings/Security",
+        },
+        { status: 403 }
+      );
+    }
     console.warn("[provision] could not list codex envs (continuing):", err);
   }
 

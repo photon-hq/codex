@@ -17,6 +17,33 @@ export class CodexCloudError extends Error {
   }
 }
 
+/**
+ * True when `err` is a Codex Cloud error indicating the linked ChatGPT account's
+ * token doesn't satisfy MFA requirements. Returned by the Wham API as
+ * `403 { detail: "Multi-factor authentication required" }`. Per
+ * https://developers.openai.com/codex/auth, the fix is for the user to enable
+ * MFA *and* "device code login" in chatgpt.com → Settings → Security and
+ * re-link Codex.
+ */
+export function isMfaRequiredError(err: unknown): err is CodexCloudError {
+  if (!(err instanceof CodexCloudError)) {
+    return false;
+  }
+  if (err.status !== 403) {
+    return false;
+  }
+  if (/multi.?factor|\bmfa\b|two.?factor|2fa/i.test(err.message)) {
+    return true;
+  }
+  if (err.body && typeof err.body === "object") {
+    const detail = (err.body as { detail?: unknown }).detail;
+    if (typeof detail === "string" && /multi.?factor|\bmfa\b/i.test(detail)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function readJson(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text) {

@@ -16,6 +16,7 @@ import {
   ensureFreshAccessToken,
   followUp,
   type ImageInput,
+  isMfaRequiredError,
   listEnvironments,
   pickDefaultEnvironment,
   uploadImage,
@@ -715,7 +716,7 @@ export class TenantWorker {
         });
       });
     } catch (err) {
-      if (err instanceof CodexCloudError && err.status === 403 && isMfaRequired(err)) {
+      if (isMfaRequiredError(err)) {
         console.warn(
           `[tenant ${this.tenant.id}] codex MFA-blocked — device-code token lacks MFA claim. ` +
             `Tenant must enable MFA AND "device code login" in chatgpt.com Settings → Security, ` +
@@ -1267,16 +1268,16 @@ function stripProseMarkdown(input: string): string {
 }
 
 function friendlyError(err: unknown): string {
+  if (isMfaRequiredError(err)) {
+    return (
+      "Codex says this account needs multi-factor authentication enabled before it " +
+      "will accept device-code logins. On the ChatGPT account linked to this number, " +
+      "go to chatgpt.com → Settings → Security and (1) enable MFA, and (2) enable " +
+      "“device code login”. Then re-link Codex from the dashboard. If the account is " +
+      "part of a ChatGPT workspace, an admin may also need to allow device-code login."
+    );
+  }
   if (err instanceof CodexCloudError) {
-    if (err.status === 403 && isMfaRequired(err)) {
-      return (
-        "Codex says this account needs multi-factor authentication enabled before it " +
-        "will accept device-code logins. On the ChatGPT account linked to this number, " +
-        "go to chatgpt.com → Settings → Security and (1) enable MFA, and (2) enable " +
-        "“device code login”. Then re-link Codex from the dashboard. If the account is " +
-        "part of a ChatGPT workspace, an admin may also need to allow device-code login."
-      );
-    }
     if (err.status === 401) {
       return "ChatGPT session expired. Open the dashboard to sign in again.";
     }
@@ -1295,18 +1296,4 @@ function friendlyError(err: unknown): string {
     return "ChatGPT is rate-limiting Codex right now. Try again in a moment.";
   }
   return "Codex hit an error. Try again, or send /new to start a fresh thread.";
-}
-
-function isMfaRequired(err: CodexCloudError): boolean {
-  if (/multi.?factor|\bmfa\b|two.?factor|2fa/i.test(err.message)) {
-    return true;
-  }
-  const body = err.body;
-  if (body && typeof body === "object") {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string" && /multi.?factor|\bmfa\b/i.test(detail)) {
-      return true;
-    }
-  }
-  return false;
 }

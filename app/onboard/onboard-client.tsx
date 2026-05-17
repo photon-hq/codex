@@ -14,7 +14,14 @@ import { ChatGPTChip, CodexIcon, SpectrumChip } from "@/components/chrome";
 import { CountryDialPicker } from "@/components/country-dial-picker";
 import { type Country, DEFAULT_COUNTRY, findByIso } from "@/lib/country-codes";
 
-type Stage = "codex" | "codex-device" | "codex-success" | "spectrum-device" | "phone" | "done";
+type Stage =
+  | "codex"
+  | "codex-device"
+  | "codex-success"
+  | "mfa"
+  | "spectrum-device"
+  | "phone"
+  | "done";
 
 interface CodexDeviceState {
   expires_at: string;
@@ -36,6 +43,9 @@ const STEP_INDEX: Record<Stage, number> = {
   codex: 0,
   "codex-device": 0,
   "codex-success": 0,
+  // MFA failure happens during/after Codex sign-in, so keep the user
+  // visually on step 0 while we ask them to fix their account settings.
+  mfa: 0,
   "spectrum-device": 1,
   phone: 2,
   done: 3,
@@ -315,6 +325,11 @@ export default function OnboardClient() {
           setStage("phone");
         } else if (body.reason === "codex_required") {
           setStage("codex");
+        } else if (body.reason === "mfa_required") {
+          setStage("mfa");
+          // Don't show a generic error toast; the dedicated MFA panel
+          // explains exactly what to do.
+          return;
         } else {
           setStage("codex");
         }
@@ -379,6 +394,7 @@ function StageIcon({ stage }: { stage: Stage }) {
   switch (stage) {
     case "codex":
     case "codex-device":
+    case "mfa":
       return <ChatGPTChip />;
     case "codex-success":
       return (
@@ -460,6 +476,9 @@ function StageContent({
 
     case "codex-success":
       return <CodexSuccessStage email={codexUser?.email ?? null} />;
+
+    case "mfa":
+      return <MfaRequiredStage busy={busy} onRelinkCodex={beginCodex} />;
 
     case "codex-device":
       return (
@@ -681,6 +700,89 @@ function CodexSuccessStage({ email }: { email: string | null }) {
       <div className="fade-up fade-up-6 mt-7 flex items-center gap-2.5 text-[var(--color-text-muted)]">
         <Loader2 className="animate-spin" size={14} />
         <span className="body-small">One sec</span>
+      </div>
+    </>
+  );
+}
+
+function MfaRequiredStage({
+  busy,
+  onRelinkCodex,
+}: {
+  busy: boolean;
+  onRelinkCodex: () => void;
+}) {
+  return (
+    <>
+      <h1 className="section-title fade-up fade-up-4 mt-4">One more thing on ChatGPT</h1>
+      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
+        Codex requires multi-factor authentication on this account before it'll accept
+        device-code logins. We need you to turn on two settings, then re-link Codex.
+      </p>
+
+      <ol className="fade-up fade-up-6 mt-6 flex w-full max-w-[28rem] flex-col gap-3 text-left">
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            1
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Open{" "}
+            <a
+              className="underline underline-offset-2 hover:text-[var(--color-text)]"
+              href="https://chatgpt.com/#settings/Security"
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              chatgpt.com → Settings → Security
+              <ExternalLink className="ml-0.5 inline" size={11} />
+            </a>{" "}
+            and enable <strong className="font-semibold">multi-factor authentication</strong>.
+          </span>
+        </li>
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            2
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            On the same page, enable{" "}
+            <strong className="font-semibold">&ldquo;Sign in with device code&rdquo;</strong>.
+            Without this, device-flow tokens don't carry the MFA claim Codex requires.
+          </span>
+        </li>
+        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+            3
+          </span>
+          <span className="body-small text-[var(--color-text)]">
+            Come back here and click <strong className="font-semibold">Re-link Codex</strong>.
+            We'll start a fresh sign-in that picks up the new settings.
+          </span>
+        </li>
+      </ol>
+
+      <div className="fade-up fade-up-7 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-2">
+        <button
+          className="btn-pill-primary inline-flex items-center justify-center"
+          disabled={busy}
+          onClick={onRelinkCodex}
+          type="button"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="mr-1.5 animate-spin" size={14} />
+              Starting…
+            </>
+          ) : (
+            <>
+              Re-link Codex
+              <ArrowRight className="ml-1.5" size={14} />
+            </>
+          )}
+        </button>
+        <p className="body-small mt-1 max-w-[24rem] text-balance text-center">
+          If your ChatGPT account is part of a workspace, your workspace admin may also need to
+          allow device-code login.
+        </p>
       </div>
     </>
   );
