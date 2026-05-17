@@ -16,8 +16,12 @@ import {
   ensureFreshAccessToken,
   followUp,
   type ImageInput,
+  isCodexNetworkError,
+  isContextLengthExceededError,
   isGithubLinkMissingError,
   isMfaRequiredError,
+  isUsageLimitError,
+  isWorkspaceBlockedError,
   listEnvironments,
   pickDefaultEnvironment,
   uploadImage,
@@ -747,6 +751,30 @@ export class TenantWorker {
             `missing_github_connector_link. Tenant must connect GitHub at ` +
             `chatgpt.com → Codex → Environments and re-link Codex.`
         );
+      } else if (isWorkspaceBlockedError(err)) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex workspace-blocked — 403 not MFA. ` +
+            `Likely ChatGPT workspace admin blocked Codex for this member, or SSO ` +
+            `restriction. See openai/codex#12651.`
+        );
+      } else if (isUsageLimitError(err)) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex usage-limit-reached — account out of ` +
+            `Codex credits / hit plan ceiling.`
+        );
+      } else if (isContextLengthExceededError(err)) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex context-length-exceeded — thread too ` +
+            `long, nudging user to /new.`
+        );
+      } else if (isCodexNetworkError(err)) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex network error after retries — ${err.message}`
+        );
+      } else if (err instanceof CodexCloudError && err.status >= 500 && err.status < 600) {
+        console.warn(
+          `[tenant ${this.tenant.id}] codex 5xx after retries — ${err.status} ${err.message}`
+        );
       } else {
         console.error(`[tenant ${this.tenant.id}] codex error:`, err);
       }
@@ -1313,6 +1341,32 @@ function friendlyError(err: unknown): string {
       "re-link Codex from the dashboard."
     );
   }
+  if (isWorkspaceBlockedError(err)) {
+    return (
+      "Your ChatGPT workspace admin has blocked Codex cloud access for this account. " +
+      "Ask the admin to allow Codex (and device-code login), or link a personal " +
+      "ChatGPT account from the dashboard."
+    );
+  }
+  if (isUsageLimitError(err)) {
+    return (
+      "You've hit this ChatGPT account's Codex usage limit. Upgrade your plan or " +
+      "wait for the window to reset, then try again. (chatgpt.com → Settings → " +
+      "Billing.)"
+    );
+  }
+  if (isContextLengthExceededError(err)) {
+    return (
+      "This thread got too long for Codex to keep in context. Send /new to start " +
+      "fresh — I'll lose the history but everything will work again."
+    );
+  }
+  if (isCodexNetworkError(err)) {
+    return (
+      "Couldn't reach OpenAI right now. Try again in a moment — if it keeps " +
+      "happening, OpenAI may be having an outage."
+    );
+  }
   if (err instanceof CodexCloudError) {
     if (err.status === 401) {
       return "ChatGPT session expired. Open the dashboard to sign in again.";
@@ -1322,6 +1376,12 @@ function friendlyError(err: unknown): string {
     }
     if (err.status === 429) {
       return "ChatGPT is rate-limiting Codex right now. Try again in a moment.";
+    }
+    if (err.status >= 500 && err.status < 600) {
+      return (
+        "OpenAI's Codex backend is having a moment. I'll retry on your next " +
+        "message — or send /new to start fresh."
+      );
     }
   }
   const msg = err instanceof Error ? err.message : String(err);

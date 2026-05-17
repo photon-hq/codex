@@ -18,6 +18,78 @@ export class CodexCloudError extends Error {
 }
 
 /**
+ * Thrown when we couldn't even reach Codex Cloud (DNS, TCP, TLS, socket
+ * timeout, abort). Distinct from `CodexCloudError`, which means the server
+ * answered with a non-2xx status. The bridge surfaces these to the user as
+ * "couldn't reach OpenAI — try again in a moment."
+ */
+export class CodexNetworkError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | undefined,
+    readonly cause: unknown
+  ) {
+    super(message);
+    this.name = "CodexNetworkError";
+  }
+}
+
+export function isCodexNetworkError(err: unknown): err is CodexNetworkError {
+  return err instanceof CodexNetworkError;
+}
+
+const NETWORK_ERROR_CODES = new Set([
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ECONNABORTED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "EPIPE",
+  "EHOSTUNREACH",
+  "ENETUNREACH",
+  "UND_ERR_SOCKET",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
+function extractErrCode(err: unknown): string | undefined {
+  if (!err || typeof err !== "object") return undefined;
+  const e = err as { code?: unknown; cause?: unknown };
+  if (typeof e.code === "string") return e.code;
+  if (e.cause && typeof e.cause === "object") {
+    const c = (e.cause as { code?: unknown }).code;
+    if (typeof c === "string") return c;
+  }
+  return undefined;
+}
+
+function looksLikeNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = extractErrCode(err);
+  if (code && NETWORK_ERROR_CODES.has(code)) return true;
+  // Node fetch wraps low-level failures as `TypeError: fetch failed`.
+  if (err.name === "TypeError" && /fetch failed/i.test(err.message)) return true;
+  if (/network|socket hang up|other side closed|aborted|timed? ?out/i.test(err.message)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * True for HTTP statuses we expect to be transient: server overloaded,
+ * bad gateway, gateway timeout, etc. 429 is *not* in this set — the user's
+ * plan is rate-limiting us and retrying immediately would be rude. We surface
+ * 429 to the user with friendly text instead.
+ */
+function isRetryableStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+const RETRY_BACKOFF_MS = [400, 1200, 3000];
+
+/**
  * True when `err` is a Codex Cloud error indicating the linked ChatGPT account's
  * token doesn't satisfy MFA requirements. Returned by the Wham API as
  * `403 { detail: "Multi-factor authentication required" }`. Per
@@ -56,6 +128,54 @@ export function isMfaRequiredError(err: unknown): err is CodexCloudError {
  * an empty array): there GitHub *is* linked, the user just hasn't connected
  * a repo to a Codex environment yet.
  */
+/**
+ * True when `err` indicates the linked ChatGPT account has hit its Codex
+ * usage / billing limit. ChatGPT returns this as 402 Payment Required, or
+ * 4xx with body strings like `usage_limit_reached`, `quota_exceeded`, or
+ * `insufficient_quota`. The user needs to upgrade their plan or wait for
+ * their window to reset; no amount of retrying will help.
+ */
+export function isUsageLimitError(err: unknown): err is CodexCloudError {
+  if (!(err instanceof CodexCloudError)) return false;
+  if (err.status === 402) return true;
+  const haystack = `${err.message} ${JSON.stringify(err.body ?? "")}`.toLowerCase();
+  return /usage[_ ]?limit|quota[_ ]?exceeded|insufficient[_ ]?quota|plan[_ ]?limit/.test(
+    haystack
+  );
+}
+
+/**
+ * True when `err` is a 403 from Codex that's NOT the MFA case. Most commonly
+ * this is a ChatGPT workspace admin blocking Codex Cloud access for this
+ * member, or SSO-restricted accounts. See openai/codex#12651 for the upstream
+ * report on `/wham/tasks/list` + `/wham/environments` returning 403 in
+ * enterprise setups.
+ */
+export function isWorkspaceBlockedError(err: unknown): err is CodexCloudError {
+  if (!(err instanceof CodexCloudError)) return false;
+  if (err.status !== 403) return false;
+  if (isMfaRequiredError(err)) return false;
+  return true;
+}
+
+/**
+ * True when the model rejected the turn because the conversation has grown
+ * past its context window. Codex's canonical error variant for this is
+ * `ContextWindowExceeded` (see codex-rs/protocol/src/error.rs). The fix is
+ * for the user to start a fresh thread via /new.
+ */
+export function isContextLengthExceededError(err: unknown): boolean {
+  const msg =
+    err instanceof CodexCloudError
+      ? `${err.message} ${JSON.stringify(err.body ?? "")}`
+      : err instanceof Error
+        ? err.message
+        : String(err);
+  return /context[_ ]?(window|length)[_ ]?(exceeded|too[_ ]?long)|maximum context length/i.test(
+    msg
+  );
+}
+
 export function isGithubLinkMissingError(err: unknown): err is CodexCloudError {
   if (!(err instanceof CodexCloudError)) {
     return false;
@@ -417,13 +537,75 @@ async function wham<T>(path: string, init: WhamHttpInit): Promise<T> {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(init.body);
   }
-  const res = await fetch(url, {
-    method: init.method ?? (body ? "POST" : "GET"),
-    headers,
-    body,
-    cache: "no-store",
-  });
-  return expectOk<T>(res, `wham ${init.method ?? "GET"} ${path}`);
+  const method = init.method ?? (body ? "POST" : "GET");
+  // Only retry idempotent calls. Retrying POST /wham/tasks would risk
+  // creating duplicate Codex tasks if the server actually received the
+  // request but the response stream got truncated.
+  const retryable = method === "GET";
+  const context = `wham ${method} ${path}`;
+
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= (retryable ? RETRY_BACKOFF_MS.length : 0); attempt++) {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers,
+        body,
+        cache: "no-store",
+      });
+      if (retryable && isRetryableStatus(res.status)) {
+        // Drain body so the connection can be reused and we have something
+        // useful in the eventual error if all retries fail.
+        const text = await res.text().catch(() => "");
+        lastErr = new CodexCloudError(
+          `${context} failed: ${res.status} ${res.statusText}${text ? ` — ${text.slice(0, 200)}` : ""}`,
+          res.status,
+          text || null
+        );
+        if (attempt < RETRY_BACKOFF_MS.length) {
+          console.warn(
+            `[codex] ${context} ${res.status} ${res.statusText} — retrying in ${RETRY_BACKOFF_MS[attempt]}ms (attempt ${attempt + 1}/${RETRY_BACKOFF_MS.length})`
+          );
+          await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+          continue;
+        }
+        throw lastErr;
+      }
+      return await expectOk<T>(res, context);
+    } catch (err) {
+      // `expectOk` always throws CodexCloudError; only re-throw non-retryable.
+      if (err instanceof CodexCloudError) {
+        if (retryable && isRetryableStatus(err.status) && attempt < RETRY_BACKOFF_MS.length) {
+          lastErr = err;
+          console.warn(
+            `[codex] ${context} ${err.status} — retrying in ${RETRY_BACKOFF_MS[attempt]}ms (attempt ${attempt + 1}/${RETRY_BACKOFF_MS.length})`
+          );
+          await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+          continue;
+        }
+        throw err;
+      }
+      if (looksLikeNetworkError(err)) {
+        lastErr = new CodexNetworkError(
+          `${context} network error: ${(err as Error).message}`,
+          extractErrCode(err),
+          err
+        );
+        if (retryable && attempt < RETRY_BACKOFF_MS.length) {
+          console.warn(
+            `[codex] ${context} network error (${extractErrCode(err) ?? (err as Error).message}) — retrying in ${RETRY_BACKOFF_MS[attempt]}ms (attempt ${attempt + 1}/${RETRY_BACKOFF_MS.length})`
+          );
+          await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+          continue;
+        }
+        throw lastErr;
+      }
+      throw err;
+    }
+  }
+  // Unreachable in practice (loop either returns or throws), but keep
+  // TypeScript happy.
+  throw lastErr ?? new CodexCloudError(`${context} failed with no result`, 500, null);
 }
 
 export async function listEnvironments(accessToken: string): Promise<WhamEnvironment[]> {
