@@ -6,9 +6,17 @@ import {
   isValidPhoneNumber,
   parsePhoneNumberFromString,
 } from "libphonenumber-js";
-import { AlertCircle, ArrowRight, Check, Copy, ExternalLink, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ChatGPTChip, CodexIcon, SpectrumChip } from "@/components/chrome";
 import { CountryDialPicker } from "@/components/country-dial-picker";
@@ -726,6 +734,106 @@ function CodexSuccessStage({ email }: { email: string | null }) {
   );
 }
 
+interface RemediationStageProps {
+  title: string;
+  description: string;
+  primary: { label: string; href: string };
+  secondary: {
+    label: string;
+    busyLabel: string;
+    busy: boolean;
+    onClick: () => void;
+  };
+  details: ReactNode;
+}
+
+/**
+ * Shared layout for "Codex isn't ready, do this on chatgpt.com" panels.
+ *
+ * Hierarchy:
+ *  1. Hero button — opens the exact deep link on chatgpt.com (new tab).
+ *  2. Secondary button — what to do *after* the user comes back (re-link
+ *     or re-check). Lower visual emphasis to avoid clicking it prematurely.
+ *  3. Collapsed "What to do" disclosure — the detailed step-by-step list,
+ *     hidden by default so users who already know the drill aren't
+ *     pelted with text. Expanded inline (no separate modal) so scroll
+ *     position isn't lost.
+ */
+function RemediationStage({
+  title,
+  description,
+  primary,
+  secondary,
+  details,
+}: RemediationStageProps) {
+  return (
+    <>
+      <h1 className="section-title fade-up fade-up-4 mt-4">{title}</h1>
+      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
+        {description}
+      </p>
+
+      <div className="fade-up fade-up-6 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-3">
+        <a
+          className="btn-pill-primary inline-flex w-full items-center justify-center"
+          href={primary.href}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          {primary.label}
+          <ExternalLink className="ml-1.5" size={14} />
+        </a>
+        <button
+          className="btn-pill-secondary inline-flex w-full items-center justify-center"
+          disabled={secondary.busy}
+          onClick={secondary.onClick}
+          type="button"
+        >
+          {secondary.busy ? (
+            <>
+              <Loader2 className="mr-1.5 animate-spin" size={14} />
+              {secondary.busyLabel}
+            </>
+          ) : (
+            <>
+              {secondary.label}
+              <ArrowRight className="ml-1.5" size={14} />
+            </>
+          )}
+        </button>
+      </div>
+
+      <details className="fade-up fade-up-7 group mt-5 w-full max-w-[28rem]">
+        <summary className="body-small inline-flex cursor-pointer items-center gap-1.5 text-[var(--color-text-muted)] outline-none transition-colors hover:text-[var(--color-text)] focus-visible:text-[var(--color-text)]">
+          <ChevronDown
+            className="transition-transform group-open:rotate-180"
+            size={12}
+          />
+          What to do
+        </summary>
+        <div className="mt-3 flex w-full flex-col gap-3 text-left">{details}</div>
+      </details>
+    </>
+  );
+}
+
+function RemediationStepCard({
+  index,
+  children,
+}: {
+  index: number;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
+      <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
+        {index}
+      </span>
+      <span className="body-small text-[var(--color-text)]">{children}</span>
+    </div>
+  );
+}
+
 function MfaRequiredStage({
   busy,
   onRelinkCodex,
@@ -734,78 +842,41 @@ function MfaRequiredStage({
   onRelinkCodex: () => void;
 }) {
   return (
-    <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">One more thing on ChatGPT</h1>
-      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
-        Codex requires multi-factor authentication on this account before it'll accept
-        device-code logins. We need you to turn on two settings, then re-link Codex.
-      </p>
-
-      <ol className="fade-up fade-up-6 mt-6 flex w-full max-w-[28rem] flex-col gap-3 text-left">
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            1
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Open{" "}
-            <a
-              className="underline underline-offset-2 hover:text-[var(--color-text)]"
-              href="https://chatgpt.com/#settings/Security"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              chatgpt.com → Settings → Security
-              <ExternalLink className="ml-0.5 inline" size={11} />
-            </a>{" "}
-            and enable <strong className="font-semibold">multi-factor authentication</strong>.
-          </span>
-        </li>
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            2
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            On the same page, enable{" "}
-            <strong className="font-semibold">&ldquo;Sign in with device code&rdquo;</strong>.
-            Without this, device-flow tokens don't carry the MFA claim Codex requires.
-          </span>
-        </li>
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            3
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Come back here and click <strong className="font-semibold">Re-link Codex</strong>.
-            We'll start a fresh sign-in that picks up the new settings.
-          </span>
-        </li>
-      </ol>
-
-      <div className="fade-up fade-up-7 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-2">
-        <button
-          className="btn-pill-primary inline-flex items-center justify-center"
-          disabled={busy}
-          onClick={onRelinkCodex}
-          type="button"
-        >
-          {busy ? (
-            <>
-              <Loader2 className="mr-1.5 animate-spin" size={14} />
-              Starting…
-            </>
-          ) : (
-            <>
-              Re-link Codex
-              <ArrowRight className="ml-1.5" size={14} />
-            </>
-          )}
-        </button>
-        <p className="body-small mt-1 max-w-[24rem] text-balance text-center">
-          If your ChatGPT account is part of a workspace, your workspace admin may also need to
-          allow device-code login.
-        </p>
-      </div>
-    </>
+    <RemediationStage
+      title="Enable MFA for Codex"
+      description="Codex needs multi-factor authentication on this ChatGPT account before it'll accept the iMessage sign-in."
+      primary={{
+        label: "Open ChatGPT Security",
+        href: "https://chatgpt.com/#settings/Security",
+      }}
+      secondary={{
+        label: "I've done it — re-link Codex",
+        busyLabel: "Starting…",
+        onClick: onRelinkCodex,
+        busy,
+      }}
+      details={
+        <>
+          <RemediationStepCard index={1}>
+            Enable <strong className="font-semibold">multi-factor authentication</strong> (any
+            method — authenticator app, push, SMS).
+          </RemediationStepCard>
+          <RemediationStepCard index={2}>
+            Scroll to <strong className="font-semibold">&ldquo;Sign in with device code&rdquo;</strong>{" "}
+            and turn it on. Without this, device-flow tokens don't carry the MFA claim Codex
+            requires.
+          </RemediationStepCard>
+          <RemediationStepCard index={3}>
+            Hit the re-link button below — we'll start a fresh sign-in that picks up the new
+            settings.
+          </RemediationStepCard>
+          <p className="body-small mt-1 px-1 text-[var(--color-text-muted)]">
+            On a ChatGPT workspace? Your admin may also need to allow device-code login from the
+            workspace's security settings.
+          </p>
+        </>
+      }
+    />
   );
 }
 
@@ -817,73 +888,35 @@ function GithubRequiredStage({
   onRelinkCodex: () => void;
 }) {
   return (
-    <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Connect GitHub to Codex</h1>
-      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
-        Codex hasn't been linked to GitHub on this ChatGPT account yet — without it, Codex can't
-        access a repo to work in. Connect GitHub first, then come back and re-link Codex.
-      </p>
-
-      <ol className="fade-up fade-up-6 mt-6 flex w-full max-w-[28rem] flex-col gap-3 text-left">
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            1
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Open{" "}
-            <a
-              className="underline underline-offset-2 hover:text-[var(--color-text)]"
-              href="https://chatgpt.com/codex/settings/environments"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              chatgpt.com → Codex → Environments
-              <ExternalLink className="ml-0.5 inline" size={11} />
-            </a>{" "}
-            and click <strong className="font-semibold">Connect GitHub</strong> to authorize Codex.
-          </span>
-        </li>
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            2
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Pick at least one repository to link to a Codex environment. Codex will run tasks
-            against that repo.
-          </span>
-        </li>
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            3
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Come back here and click <strong className="font-semibold">Re-link Codex</strong>.
-            We'll start a fresh sign-in that picks up the GitHub connection.
-          </span>
-        </li>
-      </ol>
-
-      <div className="fade-up fade-up-7 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-2">
-        <button
-          className="btn-pill-primary inline-flex items-center justify-center"
-          disabled={busy}
-          onClick={onRelinkCodex}
-          type="button"
-        >
-          {busy ? (
-            <>
-              <Loader2 className="mr-1.5 animate-spin" size={14} />
-              Starting…
-            </>
-          ) : (
-            <>
-              Re-link Codex
-              <ArrowRight className="ml-1.5" size={14} />
-            </>
-          )}
-        </button>
-      </div>
-    </>
+    <RemediationStage
+      title="Connect GitHub to Codex"
+      description="Codex needs GitHub on this ChatGPT account so it has a repo to work in."
+      primary={{
+        label: "Open Codex Environments",
+        href: "https://chatgpt.com/codex/settings/environments",
+      }}
+      secondary={{
+        label: "I've done it — re-link Codex",
+        busyLabel: "Starting…",
+        onClick: onRelinkCodex,
+        busy,
+      }}
+      details={
+        <>
+          <RemediationStepCard index={1}>
+            On the Environments page, click{" "}
+            <strong className="font-semibold">Connect GitHub</strong> and authorize Codex.
+          </RemediationStepCard>
+          <RemediationStepCard index={2}>
+            Pick at least one repository to attach to your default environment — Codex will run
+            tasks against that repo.
+          </RemediationStepCard>
+          <RemediationStepCard index={3}>
+            Hit the re-link button below — we'll pick up the new connection.
+          </RemediationStepCard>
+        </>
+      }
+    />
   );
 }
 
@@ -895,78 +928,33 @@ function GithubRepoRequiredStage({
   onRecheck: () => void;
 }) {
   return (
-    <>
-      <h1 className="section-title fade-up fade-up-4 mt-4">Add a repo to Codex</h1>
-      <p className="body-muted fade-up fade-up-5 mt-2 max-w-[28rem] text-balance">
-        Codex is connected to GitHub but no repository is attached to a Codex
-        environment yet — without a repo, Codex has nothing to run tasks
-        against. Pick a repo on chatgpt.com, then come back here.
-      </p>
-
-      <ol className="fade-up fade-up-6 mt-6 flex w-full max-w-[28rem] flex-col gap-3 text-left">
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            1
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Open{" "}
-            <a
-              className="underline underline-offset-2 hover:text-[var(--color-text)]"
-              href="https://chatgpt.com/codex/settings/environments"
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              chatgpt.com → Codex → Environments
-              <ExternalLink className="ml-0.5 inline" size={11} />
-            </a>
-            .
-          </span>
-        </li>
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            2
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Open your default environment and add at least one GitHub repository
-            to it. This is the repo Codex will work in.
-          </span>
-        </li>
-        <li className="flex items-start gap-3 rounded-[10px] border border-[var(--color-border)] bg-white/40 px-3 py-2.5">
-          <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-text)] text-[11px] font-semibold text-white">
-            3
-          </span>
-          <span className="body-small text-[var(--color-text)]">
-            Come back here and click <strong className="font-semibold">Re-check</strong>.
-            We'll verify Codex can see the repo, then continue to iMessage setup.
-          </span>
-        </li>
-      </ol>
-
-      <div className="fade-up fade-up-7 mt-7 flex w-full max-w-[28rem] flex-col items-center gap-2">
-        <button
-          className="btn-pill-primary inline-flex items-center justify-center"
-          disabled={busy}
-          onClick={onRecheck}
-          type="button"
-        >
-          {busy ? (
-            <>
-              <Loader2 className="mr-1.5 animate-spin" size={14} />
-              Checking…
-            </>
-          ) : (
-            <>
-              Re-check
-              <ArrowRight className="ml-1.5" size={14} />
-            </>
-          )}
-        </button>
-        <p className="body-small mt-1 max-w-[24rem] text-balance text-center">
-          Once you've added a repo at chatgpt.com, hit Re-check to confirm
-          and continue.
-        </p>
-      </div>
-    </>
+    <RemediationStage
+      title="Add a repo to Codex"
+      description="Codex is linked to GitHub, but no repo is attached to a Codex environment yet — without one, there's nothing for Codex to run against."
+      primary={{
+        label: "Open Codex Environments",
+        href: "https://chatgpt.com/codex/settings/environments",
+      }}
+      secondary={{
+        label: "I've done it — re-check",
+        busyLabel: "Checking…",
+        onClick: onRecheck,
+        busy,
+      }}
+      details={
+        <>
+          <RemediationStepCard index={1}>
+            Open your default Codex environment.
+          </RemediationStepCard>
+          <RemediationStepCard index={2}>
+            Add at least one GitHub repository to it — this is the repo Codex will work in.
+          </RemediationStepCard>
+          <RemediationStepCard index={3}>
+            Hit re-check below. No re-sign-in needed — your existing token is fine.
+          </RemediationStepCard>
+        </>
+      }
+    />
   );
 }
 

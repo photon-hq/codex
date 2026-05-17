@@ -36,6 +36,7 @@ const RESET_REACTION = "👍";
 const ACK_REACTION = "👍";
 const DONE_REACTION = "❤️";
 const CONNECT_ENVIRONMENTS_URL = "https://chatgpt.com/codex/settings/environments";
+const CHATGPT_SECURITY_URL = "https://chatgpt.com/#settings/Security";
 const MIN_BACKOFF_MS = 2000;
 const MAX_BACKOFF_MS = 60_000;
 const AUTH_FAILURE_THRESHOLD = 5;
@@ -818,9 +819,22 @@ export class TenantWorker {
       } else {
         console.error(`[tenant ${this.tenant.id}] codex error:`, err);
       }
-      const needsEnvLink =
-        (err instanceof CodexCloudError && err.status === 412) ||
-        isGithubLinkMissingError(err);
+      // Pick the most useful chatgpt.com deep link for this error class so
+      // the user gets a tappable rich-link card with the reply, not just a
+      // URL embedded in body text. Mirrors the onboarding panels' primary
+      // button → same destination, same one-tap UX.
+      let helpUrl: string | null = null;
+      if (isMfaRequiredError(err)) {
+        helpUrl = CHATGPT_SECURITY_URL;
+      } else if (
+        isGithubLinkMissingError(err) ||
+        (err instanceof CodexCloudError && err.status === 412)
+      ) {
+        helpUrl = CONNECT_ENVIRONMENTS_URL;
+      } else if (isUsageLimitError(err)) {
+        helpUrl = "https://chatgpt.com/#settings/Subscription";
+      }
+
       const errorText =
         err instanceof CodexCloudError && err.status === 412
           ? "Connect a GitHub repo to Codex before texting — I need an environment to run in."
@@ -831,8 +845,8 @@ export class TenantWorker {
         } else {
           await liveSpace.send(errorText);
         }
-        if (needsEnvLink) {
-          await liveSpace.send(richlink(CONNECT_ENVIRONMENTS_URL));
+        if (helpUrl) {
+          await liveSpace.send(richlink(helpUrl));
         }
       } catch (replyErr) {
         console.error(`[tenant ${this.tenant.id}] error reply failed:`, replyErr);
