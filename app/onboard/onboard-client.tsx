@@ -324,17 +324,7 @@ export default function OnboardClient() {
     }
     setBusy(true);
     try {
-      // Forward the dev-only `?force=...` query string to /api/provision
-      // so a developer can test each remediation stage by hitting
-      // /onboard?force=mfa (or =github / =github-repo / =invalid-grant).
-      // The server hard-gates the override on NODE_ENV, so this is a
-      // no-op in production builds.
-      const force =
-        typeof window === "undefined"
-          ? null
-          : new URLSearchParams(window.location.search).get("force");
-      const forceQuery = force ? `?force=${encodeURIComponent(force)}` : "";
-      const res = await fetch(`/api/provision${forceQuery}`, {
+      const res = await fetch("/api/provision", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ userPhone: userPhone.trim() }),

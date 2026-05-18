@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { TENANT_STATUS, tenants } from "@/db/schema";
 import {
-  CodexCloudError,
   ensureFreshAccessToken,
   isGithubLinkMissingError,
   isMfaRequiredError,
@@ -41,44 +40,7 @@ interface PendingTokens {
   refresh_token: string;
 }
 
-/**
- * Dev-only override that forces a specific Codex Cloud failure during the
- * provision pre-flight. Enables one-click testing of every remediation
- * panel without needing real ChatGPT accounts in each broken state.
- *
- * Usage: navigate to /onboard?force=mfa (or =github / =github-repo /
- * =invalid-grant), sign in once, click through — the provision call
- * will throw the matching error and the UI will route to the right
- * remediation stage.
- *
- * Hard-gated on NODE_ENV !== production. Even if `?force=mfa` reaches a
- * production deployment, this function returns null and provisioning
- * proceeds normally.
- */
-function readForceErrorOverride(req: Request): string | null {
-  if (process.env.NODE_ENV === "production") {
-    return null;
-  }
-  try {
-    const force = new URL(req.url).searchParams.get("force");
-    if (!force) {
-      return null;
-    }
-    if (!["mfa", "github", "github-repo", "invalid-grant"].includes(force)) {
-      return null;
-    }
-    console.warn(
-      `[provision] DEV OVERRIDE: forcing '${force}' error path (NODE_ENV=${process.env.NODE_ENV ?? "unset"})`
-    );
-    return force;
-  } catch {
-    return null;
-  }
-}
-
 export async function POST(req: Request) {
-  const forceError = readForceErrorOverride(req);
-
   const jar = await cookies();
   const bearer = jar.get("bearer")?.value;
   if (!bearer) {
@@ -127,11 +89,6 @@ export async function POST(req: Request) {
 
   let freshTokens: Awaited<ReturnType<typeof ensureFreshAccessToken>>;
   try {
-    if (forceError === "invalid-grant") {
-      throw new CodexCloudError("token refresh failed: 400 — invalid_grant", 400, {
-        error: "invalid_grant",
-      });
-    }
     freshTokens = await ensureFreshAccessToken({
       access_token: pending.access_token,
       refresh_token: pending.refresh_token,
@@ -162,42 +119,7 @@ export async function POST(req: Request) {
   let codexEnvironmentId: string | null = null;
   let envs: WhamEnvironment[] | null = null;
   try {
-    if (forceError === "mfa") {
-      throw new CodexCloudError(
-        "wham GET /wham/environments failed: 403 — Multi-factor authentication required",
-        403,
-        { detail: "Multi-factor authentication required" }
-      );
-    }
-    if (forceError === "github") {
-      throw new CodexCloudError(
-        "wham GET /wham/environments failed: 400 — missing_github_connector_link",
-        400,
-        {
-          detail: {
-            type: "missing_github_connector_link",
-            message: "GitHub connection not found for user",
-          },
-        }
-      );
-    }
-    if (forceError === "github-repo") {
-      // Synthesise a list with an environment but no repos attached — the
-      // gate below detects this and routes the UI to the github-repo
-      // remediation stage.
-      envs = [
-        {
-          id: "dev-forced-empty-env",
-          label: "Forced empty env (dev override)",
-          repos: [],
-          archived: false,
-          isPinned: true,
-          taskCount: 0,
-        },
-      ];
-    } else {
-      envs = await listEnvironments(freshTokens.access_token);
-    }
+    envs = await listEnvironments(freshTokens.access_token);
   } catch (err) {
     if (isMfaRequiredError(err)) {
       console.warn(
